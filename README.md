@@ -14,11 +14,15 @@ build/bin/placement_render [--serialization-format binary] \
   [--output-format svg] output.placebin output.svg
 make test
 make outputs
+# Run up to four benchmark pipelines concurrently.
+make -j 4 outputs
 ```
 
 `make outputs` parses the legalized `*.dp.aux` manifest in each
 `data/ispd2005` benchmark and creates `out/parsed/<design>.placebin` and
-`out/svg/<design>.svg`. `make clean` removes compiled files;
+`out/svg/<design>.svg`. It uses one job by default; pass `-j N` to process up
+to `N` benchmarks concurrently. Parsing and rendering remain ordered within
+each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
 
 ## Architecture

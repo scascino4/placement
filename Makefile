@@ -29,7 +29,11 @@ PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
 TEST_BIN := $(BIN_DIR)/placement_tests
 
-.PHONY: all test outputs clean clean-outputs format
+OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
+OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(OUTPUT_AUX_FILES))))
+OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
+
+.PHONY: all test outputs $(OUTPUT_TARGETS) clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -57,14 +61,12 @@ $(BIN_DIR):
 test: $(TEST_BIN)
 	$(TEST_BIN)
 
-outputs: all
+outputs: all $(OUTPUT_TARGETS)
+
+$(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p out/parsed out/svg
-	@set -eu; \
-	for aux in data/ispd2005/*/*.dp.aux; do \
-		design=$$(basename "$$(dirname "$$aux")"); \
-		$(PARSE_BIN) "$$aux" "out/parsed/$$design.placebin"; \
-		$(RENDER_BIN) "out/parsed/$$design.placebin" "out/svg/$$design.svg"; \
-	done
+	$(PARSE_BIN) "data/ispd2005/$*/$*.dp.aux" "out/parsed/$*.placebin"
+	$(RENDER_BIN) "out/parsed/$*.placebin" "out/svg/$*.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \
