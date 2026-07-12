@@ -68,6 +68,7 @@ public:
         return true;
       }
     }
+
     return false;
   }
 
@@ -163,13 +164,16 @@ struct Components {
 [[nodiscard]] Components parse_aux(const std::filesystem::path &path) {
   Lines lines(path);
   std::string line;
+
   if (!lines.next(line)) {
     lines.fail("empty AUX manifest");
   }
+
   const auto fields = tokens(line);
   if (fields.size() < 3 || fields[1] != ":") {
     lines.fail("expected '<format> : <component files>'");
   }
+
   const auto format = lower(fields[0]);
   if (format != "rowbasedplacement" && format != "stdcellplacement") {
     lines.fail("unsupported AUX format '" + std::string(fields[0]) + "'");
@@ -179,10 +183,12 @@ struct Components {
   std::unordered_set<std::string> suffixes;
   for (std::size_t index = 2; index < fields.size(); ++index) {
     const std::filesystem::path component(fields[index]);
+
     const auto suffix = lower(component.extension().string());
     if (!suffixes.insert(suffix).second) {
       lines.fail("duplicate component suffix '" + suffix + "'");
     }
+
     const auto resolved = path.parent_path() / component;
     if (suffix == ".nodes")
       components.nodes = resolved;
@@ -197,10 +203,12 @@ struct Components {
     else
       lines.fail("unsupported component suffix '" + suffix + "'");
   }
+
   if (components.nodes.empty() || components.nets.empty() || components.placement.empty() ||
       components.rows.empty()) {
     lines.fail("manifest requires .nodes, .nets, .pl, and .scl components");
   }
+
   return components;
 }
 
@@ -211,33 +219,41 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
   std::optional<std::uint64_t> declared_terminals;
   std::uint64_t terminal_count = 0;
   std::string line;
+
   while (lines.next(line)) {
     const auto fields = tokens(line);
     if (fields[0] == "NumNodes") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumNodes");
+
       declared_nodes = number<std::uint64_t>(fields[2], lines, "node count");
       if (*declared_nodes > std::numeric_limits<std::uint32_t>::max())
         lines.fail("node count exceeds placement model limit");
+
       board.cells.reserve(static_cast<std::size_t>(*declared_nodes));
       continue;
     }
+
     if (fields[0] == "NumTerminals") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumTerminals");
       declared_terminals = number<std::uint64_t>(fields[2], lines, "terminal count");
       continue;
     }
+
     if (!declared_nodes)
       lines.fail("NumNodes must precede node records");
     if (fields.size() < 3)
       lines.fail("node record requires name, width, and height");
+
     Cell cell;
     cell.name = fields[0];
     cell.width = number<double>(fields[1], lines, "cell width");
     cell.height = number<double>(fields[2], lines, "cell height");
+
     if (cell.width < 0 || cell.height < 0)
       lines.fail("cell dimensions cannot be negative");
+
     if (fields.size() >= 4) {
       const auto kind = lower(fields[3]);
       if (kind == "terminal")
@@ -248,10 +264,12 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
         lines.fail("unknown node kind '" + std::string(fields[3]) + "'");
       ++terminal_count;
     }
+
     board.cells.push_back(std::move(cell));
     if (board.cells.size() > *declared_nodes)
       lines.fail("more nodes than declared");
   }
+  
   if (!declared_nodes || !declared_terminals)
     lines.fail("missing node declarations");
   if (board.cells.size() != *declared_nodes)
@@ -293,15 +311,18 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
   std::optional<std::uint64_t> declared_nets;
   std::optional<std::uint64_t> declared_pins;
   std::string line;
+
   while (lines.next(line)) {
     auto fields = tokens(line);
     if (fields[0] == "NumNets") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumNets");
+
       declared_nets = number<std::uint64_t>(fields[2], lines, "net count");
       board.nets.reserve(static_cast<std::size_t>(*declared_nets));
       continue;
     }
+
     if (fields[0] == "NumPins") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumPins");
@@ -309,12 +330,14 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
       board.pins.reserve(static_cast<std::size_t>(*declared_pins));
       continue;
     }
+
     if (fields[0] != "NetDegree")
       lines.fail("expected NetDegree record");
     if (!declared_nets || !declared_pins)
       lines.fail("net declarations must precede records");
     if (fields.size() < 3 || fields[1] != ":")
       lines.fail("malformed NetDegree");
+
     const auto degree = number<std::uint64_t>(fields[2], lines, "net degree");
     Net net;
     net.name =
@@ -349,6 +372,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     if (board.nets.size() > *declared_nets || board.pins.size() > *declared_pins)
       lines.fail("more nets or pins than declared");
   }
+
   if (!declared_nets || !declared_pins)
     lines.fail("missing net declarations");
   if (board.nets.size() != *declared_nets)
@@ -365,12 +389,14 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
   std::optional<std::size_t> net_weight_count;
   std::unordered_set<std::string> seen;
   std::string line;
+
   while (lines.next(line)) {
     const auto fields = tokens(line);
     if (fields.size() < 2)
       lines.fail("weight record requires at least one value");
     if (!seen.emplace(fields[0]).second)
       lines.fail("duplicate weight record for '" + std::string(fields[0]) + "'");
+
     std::vector<double> values;
     values.reserve(fields.size() - 1);
     for (std::size_t index = 1; index < fields.size(); ++index)
@@ -399,11 +425,14 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   Lines lines(path);
   require_header(lines, "scl");
   std::string line;
+
   if (!lines.next(line))
     lines.fail("missing NumRows");
+
   auto fields = tokens(line);
   if (fields.size() < 3 || fields[0] != "NumRows" || fields[1] != ":")
     lines.fail("expected NumRows declaration");
+
   const auto declared = number<std::uint64_t>(fields[2], lines, "row count");
   board.rows.reserve(static_cast<std::size_t>(declared));
 
@@ -411,6 +440,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     fields = tokens(line);
     if (fields.size() < 2 || fields[0] != "CoreRow" || lower(fields[1]) != "horizontal")
       lines.fail("expected 'CoreRow Horizontal'");
+
     Row row;
     bool coordinate = false;
     bool spacing = false;
@@ -419,12 +449,15 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
 
     while (lines.next(line)) {
       fields = tokens(line);
+
       if (fields[0] == "End") {
         ended = true;
         break;
       }
+
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed row property");
+
       if (fields[0] == "Coordinate") {
         row.coordinate = number<double>(fields[2], lines, "row coordinate");
         coordinate = true;
@@ -475,6 +508,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     if (board.rows.size() > declared)
       lines.fail("more rows than declared");
   }
+
   if (board.rows.size() != declared)
     lines.fail("NumRows does not match row records");
 }
@@ -484,14 +518,17 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   const auto equal = field.find('=');
   if (equal == std::string_view::npos || lower(field.substr(0, equal)) != "dims")
     return std::nullopt;
+
   auto value = field.substr(equal + 1);
   if (!value.empty() && value.front() == '(')
     value.remove_prefix(1);
   if (!value.empty() && value.back() == ')')
     value.remove_suffix(1);
+
   const auto comma = value.find(',');
   if (comma == std::string_view::npos)
     lines.fail("DIMS requires DIMS=(width,height)");
+
   return std::pair{number<double>(value.substr(0, comma), lines, "DIMS width"),
                    number<double>(value.substr(comma + 1), lines, "DIMS height")};
 }
@@ -500,15 +537,18 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
   Lines lines(path);
   require_header(lines, "pl");
   std::string line;
+
   while (lines.next(line)) {
     const auto fields = tokens(line);
     if (fields.size() < 3)
       lines.fail("placement requires cell, X, and Y");
+
     const auto cell = cell_index.find(fields[0]);
     if (cell == cell_index.end())
       lines.fail("placement references unknown cell '" + std::string(fields[0]) + "'");
     if (board.cells[cell->second].location)
       lines.fail("duplicate placement for '" + std::string(fields[0]) + "'");
+
     Location location;
     location.x = number<double>(fields[1], lines, "placement X");
     location.y = number<double>(fields[2], lines, "placement Y");
@@ -533,8 +573,10 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
         location.orientation = orientation(field, lines);
       }
     }
+
     if ((location.width && *location.width < 0) || (location.height && *location.height < 0))
       lines.fail("placement dimensions cannot be negative");
+
     board.cells[cell->second].location = location;
   }
 }
