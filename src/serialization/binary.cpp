@@ -33,9 +33,7 @@ public:
 
 [[nodiscard]] std::string lower(std::string_view value) {
   std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) {
-    return static_cast<char>(std::tolower(character));
-  });
+  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
   return result;
 }
 
@@ -138,8 +136,7 @@ public:
     return values;
   }
 
-  template <typename Enum>
-  [[nodiscard]] Enum enumeration(std::uint8_t maximum, std::string_view name) {
+  template <typename Enum> [[nodiscard]] Enum enumeration(std::uint8_t maximum, std::string_view name) {
     const auto value = integer<std::uint8_t>();
     if (value > maximum)
       throw Error(path_.string() + ": invalid " + std::string(name));
@@ -168,8 +165,7 @@ private:
   return output.string() + ".tmp." + std::to_string(tick);
 }
 
-template <typename Function>
-void atomic_output(const std::filesystem::path &output, Function &&function) {
+template <typename Function> void atomic_output(const std::filesystem::path &output, Function &&function) {
   if (!output.parent_path().empty()) {
     std::filesystem::create_directories(output.parent_path());
   }

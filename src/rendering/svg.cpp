@@ -17,9 +17,7 @@ namespace {
 
 [[nodiscard]] std::string lower(std::string_view value) {
   std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) {
-    return static_cast<char>(std::tolower(character));
-  });
+  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
   return result;
 }
 
@@ -85,8 +83,7 @@ struct Bounds {
   double maximum_y{-std::numeric_limits<double>::infinity()};
 
   void include(const Rectangle &rectangle) {
-    if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) ||
-        !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
+    if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) || !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
         rectangle.width < 0 || rectangle.height < 0)
       throw Error("cannot render non-finite or negative geometry");
     minimum_x = std::min(minimum_x, rectangle.x);
@@ -101,16 +98,14 @@ struct Bounds {
 enum class CellClass { Movable, Fixed, FixedNonInteracting };
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
-  if (cell.kind == CellKind::TerminalNonInteracting ||
-      cell.location->status == PlacementStatus::FixedNonInteracting)
+  if (cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
     return CellClass::FixedNonInteracting;
   if (cell.kind == CellKind::Terminal || cell.location->status == PlacementStatus::Fixed)
     return CellClass::Fixed;
   return CellClass::Movable;
 }
 
-void write_paths(std::ostream &output, const Board &board, CellClass wanted,
-                 std::string_view css_class) {
+void write_paths(std::ostream &output, const Board &board, CellClass wanted, std::string_view css_class) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
   // viewers to parse on multi-million-cell designs.
@@ -127,8 +122,7 @@ void write_paths(std::ostream &output, const Board &board, CellClass wanted,
 
     if (in_path == 0)
       output << "    <path class=\"" << css_class << "\" d=\"";
-    output << 'M' << rectangle.x << ' ' << rectangle.y << 'h' << rectangle.width << 'v'
-           << rectangle.height << 'h' << -rectangle.width << 'z';
+    output << 'M' << rectangle.x << ' ' << rectangle.y << 'h' << rectangle.width << 'v' << rectangle.height << 'h' << -rectangle.width << 'z';
 
     ++in_path;
     if (in_path == CELLS_PER_PATH) {
@@ -187,8 +181,7 @@ public:
     Bounds bounds;
     for (const auto &row : board.rows) {
       for (const auto &subrow : row.subrows)
-        bounds.include({subrow.origin, row.coordinate,
-                        static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+        bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     }
     for (const auto &cell : board.cells)
       if (cell.location)
@@ -204,35 +197,29 @@ public:
 
     write_atomic(output_path, [&](std::ostream &output) {
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' '
-             << -padding << ' ' << width + 2 * padding << ' ' << height + 2 * padding
-             << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
+             << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
              << "  <title>" << escape(board.name) << " placement</title>\n"
-             << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, "
-             << board.nets.size() << " nets</desc>\n";
+             << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, " << board.nets.size() << " nets</desc>\n";
 
-      output
-          << "  <style>\n"
-          << "    .background{fill:#f8fafc}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-          << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ef4444;stroke:#7f1d1d;stroke-width:"
-          << stroke << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n"
-          << "  </style>\n";
+      output << "  <style>\n"
+             << "    .background{fill:#f8fafc}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
+             << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ef4444;stroke:#7f1d1d;stroke-width:" << stroke
+             << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n"
+             << "  </style>\n";
 
-      output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding
-             << "\" width=\"" << width + 2 * padding << "\" height=\"" << height + 2 * padding
-             << "\"/>\n";
+      output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
+             << height + 2 * padding << "\"/>\n";
 
       // Placement coordinates use an upward-positive Y axis, while SVG uses
       // a downward-positive one. Translate to the computed bounds, then flip
       // the geometry group without also flipping title or descriptive text.
-      output << "  <g transform=\"translate(" << -bounds.minimum_x << ' ' << bounds.maximum_y
-             << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+      output << "  <g transform=\"translate(" << -bounds.minimum_x << ' ' << bounds.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (const auto &row : board.rows) {
         for (const auto &subrow : row.subrows) {
-          output << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate
-                 << "\" width=\"" << static_cast<double>(subrow.site_count) * row.site_spacing
-                 << "\" height=\"" << row.height << "\"/>\n";
+          output << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
+                 << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
         }
       }
 
@@ -261,8 +248,7 @@ public:
     Bounds core;
     for (const auto &row : board.rows) {
       for (const auto &subrow : row.subrows)
-        core.include({subrow.origin, row.coordinate,
-                      static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+        core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     }
     if (core.empty())
       throw Error("cannot render utilization without a placement region");
@@ -277,27 +263,21 @@ public:
 
     write_atomic(output_path, [&](std::ostream &output) {
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' '
-             << -padding << ' ' << width + 2 * padding << ' ' << height + 2 * padding
-             << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
+             << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
              << "  <title>" << escape(board.name) << " utilization</title>\n"
-             << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size "
-             << grid.bin_size
+             << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
              << "; green is low utilization, red is 100 percent or greater, gray is not "
                 "placeable</desc>\n"
              << "  <style>\n"
-             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:"
-             << stroke
+             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:" << stroke
              << "}.movable-overlay{fill:#f8fafc;fill-opacity:.42;stroke:none}"
                 ".fixed-overlay{fill:#f8fafc;stroke:#1f2937;stroke-width:"
-             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke
-             << "}\n"
+             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke << "}\n"
              << "  </style>\n"
-             << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding
-             << "\" width=\"" << width + 2 * padding << "\" height=\"" << height + 2 * padding
-             << "\"/>\n"
-             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y
-             << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+             << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
+             << height + 2 * padding << "\"/>\n"
+             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (std::uint64_t row = 0; row < grid.rows; ++row) {
         const auto y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
@@ -306,10 +286,8 @@ public:
           const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
           const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
           const auto utilization = grid.at(column, row).utilization();
-          output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\""
-                 << bin_width << "\" height=\"" << bin_height << "\" fill=\""
-                 << (utilization ? utilization_color(*utilization) : std::string("#d1d5db"))
-                 << "\"/>\n";
+          output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
+                 << "\" fill=\"" << (utilization ? utilization_color(*utilization) : std::string("#d1d5db")) << "\"/>\n";
         }
       }
 

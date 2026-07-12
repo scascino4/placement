@@ -64,8 +64,7 @@ int main(int argc, char **argv) {
     auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size});
     const auto board = serializer->read(input);
     renderer->render(board, output);
-    std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output
-              << '\n';
+    std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output << '\n';
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "placement_render: " << error.what() << '\n';

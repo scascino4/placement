@@ -19,7 +19,6 @@ struct RenderOptions {
   std::optional<double> bin_size;
 };
 
-[[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format,
-                                                      RenderOptions options = {});
+[[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options = {});
 
 } // namespace placement

@@ -47,9 +47,8 @@ void write(const std::filesystem::path &path, std::string_view contents) {
 }
 
 void fixture(const std::filesystem::path &directory) {
-  write(directory / "tiny.aux",
-        "# arbitrary component order\n"
-        "RowBasedPlacement : tiny.pl tiny.scl tiny.wts tiny.nets tiny.nodes\n");
+  write(directory / "tiny.aux", "# arbitrary component order\n"
+                                "RowBasedPlacement : tiny.pl tiny.scl tiny.wts tiny.nets tiny.nodes\n");
   write(directory / "tiny.nodes", "UCLA nodes 1.0\n"
                                   "# cells\n"
                                   "NumNodes : 4\nNumTerminals : 2\n"
@@ -81,8 +80,7 @@ template <typename Function> void expect_error(Function &&function, std::string_
   try {
     function();
   } catch (const placement::Error &error) {
-    check(std::string_view(error.what()).find(fragment) != std::string_view::npos,
-          "error did not contain expected diagnostic");
+    check(std::string_view(error.what()).find(fragment) != std::string_view::npos, "error did not contain expected diagnostic");
     return;
   }
   throw std::runtime_error("expected placement::Error");
@@ -105,14 +103,12 @@ void parser_test() {
   check(!board.cells[3].location, "undefined placement");
   check(board.cells[0].location->orientation == placement::Orientation::E, "orientation");
   check(board.cells[1].location->status == placement::PlacementStatus::Fixed, "fixed status");
-  check(board.cells[2].location->status == placement::PlacementStatus::FixedNonInteracting,
-        "fixed_NI status");
+  check(board.cells[2].location->status == placement::PlacementStatus::FixedNonInteracting, "fixed_NI status");
   check(*board.cells[2].location->width == 7 && *board.cells[2].location->height == 8, "DIMS");
   check(board.cells[0].weights == std::vector<double>({1, 2}), "node weights");
   check(board.nets[0].weights == std::vector<double>({2.5}), "net weights");
   check(board.pins[2].direction == placement::PinDirection::Bidirectional, "bidirectional pin");
-  check(board.rows[0].subrows.size() == 2 && board.rows[0].site_width == 2,
-        "multiple subrows and default site width");
+  check(board.rows[0].subrows.size() == 2 && board.rows[0].site_width == 2, "multiple subrows and default site width");
   check(board.rows[0].symmetry == 7, "row symmetry");
 }
 
@@ -136,53 +132,45 @@ void binary_test() {
   serializer->write(board, second);
   check(read(first) == read(second), "binary output must be deterministic");
   const auto decoded = serializer->read(first);
-  check(decoded.name == board.name && decoded.cells.size() == board.cells.size(),
-        "binary board identity");
+  check(decoded.name == board.name && decoded.cells.size() == board.cells.size(), "binary board identity");
   check(decoded.cells[2].location->orientation == placement::Orientation::FW, "binary orientation");
   check(decoded.pins[0].offset_x == -0.5 && decoded.nets[0].pin_count == 3, "binary connectivity");
 
   auto bytes = read(first);
   bytes[0] = 'X';
   write(temporary.path() / "bad-magic.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "bad-magic.placebin"); },
-               "invalid binary magic");
+  expect_error([&] { (void)serializer->read(temporary.path() / "bad-magic.placebin"); }, "invalid binary magic");
 
   bytes = read(first);
   bytes[8] = 2;
   bytes[9] = 0;
   write(temporary.path() / "bad-version.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "bad-version.placebin"); },
-               "unsupported binary major version");
+  expect_error([&] { (void)serializer->read(temporary.path() / "bad-version.placebin"); }, "unsupported binary major version");
 
   bytes = read(first);
   bytes.resize(bytes.size() - 3);
   write(temporary.path() / "truncated.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "truncated.placebin"); },
-               "truncated binary placement");
+  expect_error([&] { (void)serializer->read(temporary.path() / "truncated.placebin"); }, "truncated binary placement");
 
   bytes = read(first);
   bytes.push_back('x');
   write(temporary.path() / "trailing.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "trailing.placebin"); },
-               "trailing binary data");
+  expect_error([&] { (void)serializer->read(temporary.path() / "trailing.placebin"); }, "trailing binary data");
 
   bytes = read(first);
   // Header (16), name length (4), and "tiny" (4) precede the cell count.
   for (std::size_t index = 24; index < 32; ++index)
     bytes[index] = '\xFF';
   write(temporary.path() / "bad-count.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "bad-count.placebin"); },
-               "invalid cell count");
+  expect_error([&] { (void)serializer->read(temporary.path() / "bad-count.placebin"); }, "invalid cell count");
 
   placement::Board invalid_range;
   invalid_range.name = "invalid";
   invalid_range.nets.push_back({"net", 1, 1, {}});
   serializer->write(invalid_range, temporary.path() / "bad-range.placebin");
-  expect_error([&] { (void)serializer->read(temporary.path() / "bad-range.placebin"); },
-               "net pin range is out of bounds");
+  expect_error([&] { (void)serializer->read(temporary.path() / "bad-range.placebin"); }, "net pin range is out of bounds");
 
-  expect_error([&] { (void)placement::make_serializer("unknown"); },
-               "unsupported serialization format");
+  expect_error([&] { (void)placement::make_serializer("unknown"); }, "unsupported serialization format");
 }
 
 void utilization_test() {
@@ -212,14 +200,10 @@ void utilization_test() {
   board.cells.push_back(fixed);
 
   const auto grid = board.utilization(10);
-  check(grid.columns == 2 && grid.rows == 1 && grid.bins.size() == 2,
-        "utilization grid dimensions");
-  check(close(grid.at(0, 0).movable_area, 25) && close(grid.at(1, 0).movable_area, 25),
-        "movable area is split at bin boundaries");
-  check(close(grid.at(0, 0).placeable_area, 80) && close(grid.at(1, 0).placeable_area, 100),
-        "fixed geometry is excluded from placeable area");
-  check(close(*grid.at(0, 0).utilization(), 0.3125) && close(*grid.at(1, 0).utilization(), 0.25),
-        "utilization ratios");
+  check(grid.columns == 2 && grid.rows == 1 && grid.bins.size() == 2, "utilization grid dimensions");
+  check(close(grid.at(0, 0).movable_area, 25) && close(grid.at(1, 0).movable_area, 25), "movable area is split at bin boundaries");
+  check(close(grid.at(0, 0).placeable_area, 80) && close(grid.at(1, 0).placeable_area, 100), "fixed geometry is excluded from placeable area");
+  check(close(*grid.at(0, 0).utilization(), 0.3125) && close(*grid.at(1, 0).utilization(), 0.25), "utilization ratios");
 
   placement::Board fragmented;
   row.subrows = {{0, 4}, {6, 4}};
@@ -228,8 +212,7 @@ void utilization_test() {
   fixed.location->x = 3;
   fragmented.cells.push_back(fixed);
   const auto fragmented_grid = fragmented.utilization(10);
-  check(close(fragmented_grid.at(0, 0).placeable_area, 60),
-        "fixed blockage excludes only its intersection with legal rows");
+  check(close(fragmented_grid.at(0, 0).placeable_area, 60), "fixed blockage excludes only its intersection with legal rows");
 
   expect_error([&] { (void)board.utilization(0); }, "finite and positive");
   expect_error([&] { (void)grid.at(2, 0); }, "out of bounds");
@@ -249,11 +232,8 @@ void svg_test() {
   renderer->render(board, svg);
   const auto contents = read(svg);
   check(contents.find("tiny &lt;&amp;&gt; placement") != std::string::npos, "escaped SVG title");
-  check(contents.find("translate(") != std::string::npos &&
-            contents.find("scale(1 -1)") != std::string::npos,
-        "placement coordinate transform");
-  check(contents.find("class=\"movable\"") != std::string::npos &&
-            contents.find("class=\"fixed\"") != std::string::npos &&
+  check(contents.find("translate(") != std::string::npos && contents.find("scale(1 -1)") != std::string::npos, "placement coordinate transform");
+  check(contents.find("class=\"movable\"") != std::string::npos && contents.find("class=\"fixed\"") != std::string::npos &&
             contents.find("class=\"fixed-ni\"") != std::string::npos,
         "SVG cell classes");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
@@ -262,20 +242,16 @@ void svg_test() {
   const auto utilization_svg = temporary.path() / "utilization.svg";
   utilization_renderer->render(board, utilization_svg);
   const auto utilization_contents = read(utilization_svg);
-  check(utilization_contents.find("tiny &lt;&amp;&gt; utilization") != std::string::npos,
-        "utilization SVG title");
-  check(utilization_contents.find("class=\"bin\"") != std::string::npos &&
-            utilization_contents.find("fixed-overlay") != std::string::npos,
+  check(utilization_contents.find("tiny &lt;&amp;&gt; utilization") != std::string::npos, "utilization SVG title");
+  check(utilization_contents.find("class=\"bin\"") != std::string::npos && utilization_contents.find("fixed-overlay") != std::string::npos,
         "utilization SVG bins and fixed objects");
   check(utilization_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
             utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "utilization SVG macros mask bin colors");
 
   placement::Board empty;
-  expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); },
-               "without geometry");
-  check(!std::filesystem::exists(temporary.path() / "empty.svg"),
-        "failed render must not leave output");
+  expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); }, "without geometry");
+  check(!std::filesystem::exists(temporary.path() / "empty.svg"), "failed render must not leave output");
 }
 
 } // namespace

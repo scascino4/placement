@@ -38,8 +38,7 @@ struct Rectangle {
 }
 
 [[nodiscard]] bool movable(const Cell &cell) {
-  return cell.kind == CellKind::Movable && cell.location &&
-         cell.location->status == PlacementStatus::Movable;
+  return cell.kind == CellKind::Movable && cell.location && cell.location->status == PlacementStatus::Movable;
 }
 
 [[nodiscard]] bool fixed(const Cell &cell) { return cell.location && !movable(cell); }
@@ -47,8 +46,7 @@ struct Rectangle {
 enum class Area { Movable, Placeable };
 
 void validate(const Rectangle &rect) {
-  if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) ||
-      !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
+  if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) || !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
     throw Error("cannot calculate utilization for non-finite or negative geometry");
 }
 
@@ -66,12 +64,8 @@ void add_overlap(UtilizationGrid &grid, const Rectangle &rect, Area area, double
 
   const auto col0 = static_cast<std::uint64_t>((x0 - grid.minimum_x) / grid.bin_size);
   const auto row0 = static_cast<std::uint64_t>((y0 - grid.minimum_y) / grid.bin_size);
-  const auto col1 = std::min(
-      grid.columns - 1,
-      static_cast<std::uint64_t>((std::nextafter(x1, x0) - grid.minimum_x) / grid.bin_size));
-  const auto row1 =
-      std::min(grid.rows - 1, static_cast<std::uint64_t>((std::nextafter(y1, y0) - grid.minimum_y) /
-                                                         grid.bin_size));
+  const auto col1 = std::min(grid.columns - 1, static_cast<std::uint64_t>((std::nextafter(x1, x0) - grid.minimum_x) / grid.bin_size));
+  const auto row1 = std::min(grid.rows - 1, static_cast<std::uint64_t>((std::nextafter(y1, y0) - grid.minimum_y) / grid.bin_size));
 
   for (auto row = row0; row <= row1; ++row) {
     const auto bin_y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
@@ -116,8 +110,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
 
   for (const auto &row : rows) {
     for (const auto &subrow : row.subrows) {
-      const Rectangle rect{subrow.origin, row.coordinate,
-                           static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
+      const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
       validate(rect);
       min_x = std::min(min_x, rect.x);
       min_y = std::min(min_y, rect.y);
@@ -139,17 +132,12 @@ UtilizationGrid Board::utilization(double bin_size) const {
 
   for (const auto &row : rows) {
     for (const auto &subrow : row.subrows)
-      add_overlap(grid,
-                  {subrow.origin, row.coordinate,
-                   static_cast<double>(subrow.site_count) * row.site_spacing, row.height},
-                  Area::Placeable);
+      add_overlap(grid, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height}, Area::Placeable);
   }
 
   std::vector<std::size_t> row_order(rows.size());
   std::iota(row_order.begin(), row_order.end(), 0);
-  std::sort(row_order.begin(), row_order.end(), [this](std::size_t lhs, std::size_t rhs) {
-    return rows[lhs].coordinate < rows[rhs].coordinate;
-  });
+  std::sort(row_order.begin(), row_order.end(), [this](std::size_t lhs, std::size_t rhs) { return rows[lhs].coordinate < rows[rhs].coordinate; });
 
   double max_row_height = 0;
   for (const auto &row : rows)
@@ -164,8 +152,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
     } else if (fixed(cell)) {
       // Only rows that can intersect the fixed cell need to be examined.
       const auto first =
-          std::ranges::lower_bound(row_order, rect.y - max_row_height, {},
-                                   [this](std::size_t index) { return rows[index].coordinate; });
+          std::ranges::lower_bound(row_order, rect.y - max_row_height, {}, [this](std::size_t index) { return rows[index].coordinate; });
 
       for (auto it = first; it != row_order.end(); ++it) {
         const auto &row = rows[*it];
@@ -178,8 +165,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
           continue;
 
         for (const auto &subrow : row.subrows) {
-          const auto subrow_right =
-              subrow.origin + static_cast<double>(subrow.site_count) * row.site_spacing;
+          const auto subrow_right = subrow.origin + static_cast<double>(subrow.site_count) * row.site_spacing;
           const auto x0 = std::max(subrow.origin, rect.x);
           const auto x1 = std::min(subrow_right, rect.right());
 

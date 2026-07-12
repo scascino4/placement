@@ -83,8 +83,7 @@ private:
   std::uint64_t number_{};
 };
 
-template <typename T>
-[[nodiscard]] T number(std::string_view token, const Lines &lines, std::string_view description) {
+template <typename T> [[nodiscard]] T number(std::string_view token, const Lines &lines, std::string_view description) {
   T value{};
   const auto *begin = token.data();
   const auto *end = begin + token.size();
@@ -101,9 +100,7 @@ template <typename T>
 
 [[nodiscard]] std::string lower(std::string_view value) {
   std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) {
-    return static_cast<char>(std::tolower(character));
-  });
+  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
   return result;
 }
 
@@ -203,8 +200,7 @@ struct Components {
       lines.fail("unsupported component suffix '" + suffix + "'");
   }
 
-  if (components.nodes.empty() || components.nets.empty() || components.placement.empty() ||
-      components.rows.empty()) {
+  if (components.nodes.empty() || components.nets.empty() || components.placement.empty() || components.rows.empty()) {
     lines.fail("manifest requires .nodes, .nets, .pl, and .scl components");
   }
 
@@ -339,8 +335,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
 
     const auto degree = number<std::uint64_t>(fields[2], lines, "net degree");
     Net net;
-    net.name =
-        fields.size() >= 4 ? std::string(fields[3]) : "net_" + std::to_string(board.nets.size());
+    net.name = fields.size() >= 4 ? std::string(fields[3]) : "net_" + std::to_string(board.nets.size());
 
     // Pins are appended directly to one shared vector so parsing remains
     // memory-efficient even for benchmarks with millions of pins.
@@ -380,8 +375,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     lines.fail("NumPins does not match records");
 }
 
-void parse_weights(const std::filesystem::path &path, Board &board, const CellIndex &cell_index,
-                   const NetIndex &net_index) {
+void parse_weights(const std::filesystem::path &path, Board &board, const CellIndex &cell_index, const NetIndex &net_index) {
   Lines lines(path);
   require_header(lines, "wts");
   std::optional<std::size_t> node_weight_count;
@@ -487,8 +481,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
       } else if (fields[0] == "SubrowOrigin") {
         if (fields.size() < 6 || fields[3] != "NumSites" || fields[4] != ":")
           lines.fail("SubrowOrigin requires 'NumSites : <count>'");
-        row.subrows.push_back({number<double>(fields[2], lines, "subrow origin"),
-                               number<std::uint64_t>(fields[5], lines, "site count")});
+        row.subrows.push_back({number<double>(fields[2], lines, "subrow origin"), number<std::uint64_t>(fields[5], lines, "site count")});
       } else {
         lines.fail("unknown row property '" + std::string(fields[0]) + "'");
       }
@@ -512,8 +505,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     lines.fail("NumRows does not match row records");
 }
 
-[[nodiscard]] std::optional<std::pair<double, double>> parse_dims(std::string_view field,
-                                                                  const Lines &lines) {
+[[nodiscard]] std::optional<std::pair<double, double>> parse_dims(std::string_view field, const Lines &lines) {
   const auto equal = field.find('=');
   if (equal == std::string_view::npos || lower(field.substr(0, equal)) != "dims")
     return std::nullopt;
@@ -528,8 +520,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   if (comma == std::string_view::npos)
     lines.fail("DIMS requires DIMS=(width,height)");
 
-  return std::pair{number<double>(value.substr(0, comma), lines, "DIMS width"),
-                   number<double>(value.substr(comma + 1), lines, "DIMS height")};
+  return std::pair{number<double>(value.substr(0, comma), lines, "DIMS width"), number<double>(value.substr(comma + 1), lines, "DIMS height")};
 }
 
 void parse_placement(const std::filesystem::path &path, Board &board, const CellIndex &cell_index) {
