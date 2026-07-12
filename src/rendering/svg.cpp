@@ -206,12 +206,12 @@ public:
 
       output << "  <style>\n";
       if (options_.dark_mode)
-        output << "    .background{fill:#0f172a}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
-               << "}.movable{fill:#60a5fa;stroke:none}.fixed{fill:#f87171;stroke:#fca5a5;stroke-width:" << stroke
+        output << "    .background{fill:#000000}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
+               << "}.movable{fill:#60a5fa;stroke:none}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
                << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke << "}\n";
       else
-        output << "    .background{fill:#f8fafc}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-               << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ef4444;stroke:#7f1d1d;stroke-width:" << stroke
+        output << "    .background{fill:#000000}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
+               << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
                << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n";
       output << "  </style>\n";
 
@@ -272,6 +272,7 @@ public:
     const auto stroke = span / 8000.0;
 
     write_atomic(output_path, [&](std::ostream &output) {
+      constexpr std::string_view background = "#000000";
       const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
       const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
       const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
@@ -285,7 +286,7 @@ public:
              << "; green is low utilization, red is 100 percent or greater, gray is not "
                 "placeable</desc>\n"
              << "  <style>\n"
-             << "    .background{fill:" << surface << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
+             << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
              << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
              << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
              << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
@@ -353,6 +354,7 @@ public:
     const auto padding = span * 0.01;
     const auto stroke = span / 8000.0;
     write_atomic(output_path, [&](std::ostream &output) {
+      constexpr std::string_view background = "#000000";
       const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
       const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
       const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
@@ -365,7 +367,7 @@ public:
              << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
              << color_ceiling << " pins per square placement unit</desc>\n"
              << "  <style>\n"
-             << "    .background{fill:" << surface << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
+             << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
              << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
              << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
              << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
