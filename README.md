@@ -11,7 +11,7 @@ make
 build/bin/placement_parse [--input-format bookshelf] \
   [--serialization-format binary] input.dp.aux output.placebin
 build/bin/placement_render [--serialization-format binary] \
-  [--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] output.placebin output.svg
+  [--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] [--dark-mode] output.placebin output.svg
 make test
 make valgrind
 make outputs
@@ -85,7 +85,9 @@ non-interacting fixed objects with separate styles. The writer preserves the
 placement convention that Y increases upward and swaps dimensions for rotated
 orientations. Cells are grouped into paths to keep multi-million-cell outputs
 manageable. Connectivity is retained in the binary but is intentionally not
-drawn in this first renderer.
+drawn in this first renderer. Light colors are used by default; pass
+`--dark-mode` to any SVG output format for a dark background and matching
+high-contrast colors.
 
 The `utilization-svg` renderer divides the placement region into square bins
 and colors them from green (low utilization) through yellow to red (100% or

@@ -17,6 +17,7 @@ public:
 
 struct RenderOptions {
   std::optional<double> bin_size;
+  bool dark_mode{};
 };
 
 [[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options = {});

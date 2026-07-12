@@ -177,6 +177,8 @@ template <typename Write> void write_atomic(const std::filesystem::path &path, W
 
 class SvgWriter final : public Renderer {
 public:
+  explicit SvgWriter(RenderOptions options) : options_(options) {}
+
   void render(const Board &board, const std::filesystem::path &output_path) const override {
     Bounds bounds;
     for (const auto &row : board.rows) {
@@ -202,11 +204,16 @@ public:
              << "  <title>" << escape(board.name) << " placement</title>\n"
              << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, " << board.nets.size() << " nets</desc>\n";
 
-      output << "  <style>\n"
-             << "    .background{fill:#f8fafc}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-             << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ef4444;stroke:#7f1d1d;stroke-width:" << stroke
-             << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n"
-             << "  </style>\n";
+      output << "  <style>\n";
+      if (options_.dark_mode)
+        output << "    .background{fill:#0f172a}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
+               << "}.movable{fill:#60a5fa;stroke:none}.fixed{fill:#f87171;stroke:#fca5a5;stroke-width:" << stroke
+               << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke << "}\n";
+      else
+        output << "    .background{fill:#f8fafc}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
+               << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ef4444;stroke:#7f1d1d;stroke-width:" << stroke
+               << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n";
+      output << "  </style>\n";
 
       output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n";
@@ -230,13 +237,16 @@ public:
       output << "  </g>\n</svg>\n";
     });
   }
+
+private:
+  RenderOptions options_;
 };
 
-[[nodiscard]] std::string utilization_color(double utilization) {
+[[nodiscard]] std::string utilization_color(double utilization, bool dark_mode) {
   const auto clamped = std::clamp(utilization, 0.0, 1.0);
   const auto hue = 120.0 * (1.0 - clamped);
   std::ostringstream color;
-  color << "hsl(" << std::setprecision(5) << hue << " 72% 48%)";
+  color << "hsl(" << std::setprecision(5) << hue << (dark_mode ? " 78% 56%)" : " 72% 48%)");
   return color.str();
 }
 
@@ -262,6 +272,11 @@ public:
     const auto stroke = span / 8000.0;
 
     write_atomic(output_path, [&](std::ostream &output) {
+      const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
+      const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
+      const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
+      const auto fixed_ni_stroke = options_.dark_mode ? "#94a3b8" : "#334155";
+      const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
              << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
              << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
@@ -270,10 +285,10 @@ public:
              << "; green is low utilization, red is 100 percent or greater, gray is not "
                 "placeable</desc>\n"
              << "  <style>\n"
-             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:" << stroke
-             << "}.movable-overlay{fill:#f8fafc;fill-opacity:.42;stroke:none}"
-                ".fixed-overlay{fill:#f8fafc;stroke:#1f2937;stroke-width:"
-             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke << "}\n"
+             << "    .background{fill:" << surface << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
+             << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
+             << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
+             << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
              << "  </style>\n"
              << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n"
@@ -287,7 +302,7 @@ public:
           const auto bin_width = std::min(grid.bin_size, grid.max_x - x);
           const auto utilization = grid.at(column, row).utilization();
           output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
-                 << "\" fill=\"" << (utilization ? utilization_color(*utilization) : std::string("#d1d5db")) << "\"/>\n";
+                 << "\" fill=\"" << (utilization ? utilization_color(*utilization, options_.dark_mode) : unavailable) << "\"/>\n";
         }
       }
 
@@ -338,6 +353,11 @@ public:
     const auto padding = span * 0.01;
     const auto stroke = span / 8000.0;
     write_atomic(output_path, [&](std::ostream &output) {
+      const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
+      const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
+      const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
+      const auto fixed_ni_stroke = options_.dark_mode ? "#94a3b8" : "#334155";
+      const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
              << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
              << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
@@ -345,10 +365,10 @@ public:
              << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
              << color_ceiling << " pins per square placement unit</desc>\n"
              << "  <style>\n"
-             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:" << stroke
-             << "}.movable-overlay{fill:#f8fafc;fill-opacity:.42;stroke:none}"
-                ".fixed-overlay{fill:#f8fafc;stroke:#1f2937;stroke-width:"
-             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke << "}\n"
+             << "    .background{fill:" << surface << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
+             << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
+             << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
+             << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
              << "  </style>\n"
              << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n"
@@ -363,7 +383,7 @@ public:
           const auto &bin = grid.at(column, row);
           const auto placeable = utilization_grid.at(column, row).utilization().has_value();
           output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
-                 << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling) : std::string("#d1d5db")) << "\"><title>"
+                 << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling, options_.dark_mode) : unavailable) << "\"><title>"
                  << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
         }
       }
@@ -382,7 +402,7 @@ private:
 
 std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options) {
   if (lower(format) == "svg")
-    return std::make_unique<SvgWriter>();
+    return std::make_unique<SvgWriter>(options);
   if (lower(format) == "utilization-svg")
     return std::make_unique<UtilizationSvgWriter>(options);
   if (lower(format) == "pin-density-svg")

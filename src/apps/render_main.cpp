@@ -13,7 +13,7 @@ namespace {
 
 void usage(std::ostream &output) {
   output << "Usage: placement_render [--serialization-format binary] "
-            "[--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] <input> <output>\n";
+            "[--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] [--dark-mode] <input> <output>\n";
 }
 
 } // namespace
@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
     std::string serialization_format = "binary";
     std::string output_format = "svg";
     std::optional<double> bin_size;
+    bool dark_mode = false;
     int arg = 1;
 
     while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
@@ -30,6 +31,10 @@ int main(int argc, char **argv) {
       if (option == "--help") {
         usage(std::cout);
         return 0;
+      }
+      if (option == "--dark-mode") {
+        dark_mode = true;
+        continue;
       }
       if (arg >= argc)
         throw placement::Error(std::string(option) + " requires a value");
@@ -61,7 +66,7 @@ int main(int argc, char **argv) {
     const std::filesystem::path input(argv[arg]);
     const std::filesystem::path output(argv[arg + 1]);
     auto serializer = placement::make_serializer(serialization_format);
-    auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size});
+    auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size, .dark_mode = dark_mode});
     const auto board = serializer->read(input);
     renderer->render(board, output);
     std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output << '\n';

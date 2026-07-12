@@ -275,6 +275,14 @@ void svg_test() {
         "SVG cell classes");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
 
+  auto dark_renderer = placement::make_renderer("svg", {.bin_size = std::nullopt, .dark_mode = true});
+  const auto dark_svg = temporary.path() / "tiny-dark.svg";
+  dark_renderer->render(board, dark_svg);
+  const auto dark_contents = read(dark_svg);
+  check(dark_contents.find(".background{fill:#0f172a}") != std::string::npos && dark_contents.find(".movable{fill:#60a5fa") != std::string::npos,
+        "dark placement SVG palette");
+  check(contents.find("#0f172a") == std::string::npos, "light placement SVG remains the default");
+
   auto utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0});
   const auto utilization_svg = temporary.path() / "utilization.svg";
   utilization_renderer->render(board, utilization_svg);
@@ -285,6 +293,14 @@ void svg_test() {
   check(utilization_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
             utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "utilization SVG macros mask bin colors");
+
+  auto dark_utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0, .dark_mode = true});
+  const auto dark_utilization_svg = temporary.path() / "utilization-dark.svg";
+  dark_utilization_renderer->render(board, dark_utilization_svg);
+  const auto dark_utilization_contents = read(dark_utilization_svg);
+  check(dark_utilization_contents.find(".background{fill:#0f172a}") != std::string::npos &&
+            dark_utilization_contents.find("hsl(120 78% 56%)") != std::string::npos,
+        "dark utilization SVG palette");
 
   auto pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0});
   const auto pin_density_svg = temporary.path() / "pin-density.svg";
@@ -297,6 +313,14 @@ void svg_test() {
             pin_density_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
             pin_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "pin density SVG masks macros consistently with utilization");
+
+  auto dark_pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0, .dark_mode = true});
+  const auto dark_pin_density_svg = temporary.path() / "pin-density-dark.svg";
+  dark_pin_density_renderer->render(board, dark_pin_density_svg);
+  const auto dark_pin_density_contents = read(dark_pin_density_svg);
+  check(dark_pin_density_contents.find(".movable-overlay{fill:#0f172a;fill-opacity:.42") != std::string::npos &&
+            dark_pin_density_contents.find("stroke:#cbd5e1") != std::string::npos,
+        "dark pin density SVG palette");
 
   placement::Board empty;
   expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); }, "without geometry");
