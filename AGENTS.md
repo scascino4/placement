@@ -11,6 +11,8 @@ be added without changing the core model or command-line applications.
 - `make`: build `build/bin/placement_parse` and
   `build/bin/placement_render`.
 - `make test`: build and run the standard-library-only unit tests.
+- `make valgrind`: build debug-symbol variants in `build/valgrind` and run
+  parsing and SVG rendering for `adaptec1` under Valgrind Memcheck.
 - `make outputs`: parse all eight legalized `data/ispd2005/*/*.dp.aux`
   benchmarks into `out/parsed` and render them into `out/svg`.
 - `make clean`: remove compiled artifacts.
@@ -19,7 +21,9 @@ be added without changing the core model or command-line applications.
 Before handing off changes, run at least `make` and `make test`. For changes to
 parsing, serialization, or rendering behavior, also run `make outputs`, verify
 all eight binaries can be read back, and qualitatively inspect rasterized SVG
-previews for clipping, inversion, or implausible geometry.
+previews for clipping, inversion, or implausible geometry. For changes that
+affect memory ownership, allocation, or large-data processing, also run the
+opt-in `make valgrind` smoke test when Valgrind is available.
 
 ## Code organization and conventions
 

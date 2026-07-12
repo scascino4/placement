@@ -13,6 +13,7 @@ build/bin/placement_parse [--input-format bookshelf] \
 build/bin/placement_render [--serialization-format binary] \
   [--output-format svg] output.placebin output.svg
 make test
+make valgrind
 make outputs
 # Run up to four benchmark pipelines concurrently.
 make -j 4 outputs
@@ -24,6 +25,14 @@ make -j 4 outputs
 to `N` benchmarks concurrently. Parsing and rendering remain ordered within
 each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
+
+`make valgrind` builds debug-symbol variants of both applications in
+`build/valgrind`, then checks parsing and SVG rendering with Valgrind Memcheck
+using `adaptec1`, the smallest ISPD benchmark. It is an opt-in smoke test
+because it requires Valgrind and is substantially slower than `make test`.
+Temporary placement and SVG outputs are removed automatically. Set
+`VALGRIND_FLAGS` to replace the default Memcheck arguments or
+`VALGRIND_CXXFLAGS` to replace the debug build flags.
 
 ## Architecture
 

@@ -33,7 +33,7 @@ OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
 OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(OUTPUT_AUX_FILES))))
 OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
 
-.PHONY: all test outputs $(OUTPUT_TARGETS) clean clean-outputs format
+.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -60,6 +60,11 @@ $(BIN_DIR):
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
+
+valgrind:
+	+VALGRIND_BUILD_DIR="$(VALGRIND_BUILD_DIR)" \
+		VALGRIND_CXXFLAGS="$(VALGRIND_CXXFLAGS)" \
+		VALGRIND_FLAGS="$(VALGRIND_FLAGS)" ./test/valgrind_smoke.sh
 
 outputs: all $(OUTPUT_TARGETS)
 
