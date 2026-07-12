@@ -218,6 +218,43 @@ void utilization_test() {
   expect_error([&] { (void)grid.at(2, 0); }, "out of bounds");
 }
 
+void pin_density_test() {
+  placement::Board board;
+  placement::Row row;
+  row.coordinate = 0;
+  row.height = 20;
+  row.site_spacing = 1;
+  row.subrows.push_back({0, 40});
+  board.rows.push_back(row);
+
+  placement::Cell north;
+  north.width = 4;
+  north.height = 2;
+  north.location.emplace();
+  board.cells.push_back(north);
+
+  placement::Cell east = north;
+  east.location->x = 20;
+  east.location->orientation = placement::Orientation::E;
+  board.cells.push_back(east);
+
+  board.pins.push_back({0, placement::PinDirection::Input, 1, 0});
+  board.pins.push_back({1, placement::PinDirection::Output, 0, 6});
+  placement::Cell unplaced;
+  board.cells.push_back(unplaced);
+  board.pins.push_back({2, placement::PinDirection::Unknown, 0, 0});
+
+  const auto grid = board.pin_density(10);
+  check(grid.columns == 4 && grid.rows == 2 && grid.bins.size() == 8, "pin density grid dimensions");
+  check(grid.at(0, 0).pin_count == 1 && grid.at(2, 0).pin_count == 1, "oriented pins are assigned to bins");
+  check(close(grid.at(0, 0).density(), 0.01), "pin density uses clipped bin area");
+  expect_error([&] { (void)board.pin_density(0); }, "finite and positive");
+  expect_error([&] { (void)grid.at(4, 0); }, "out of bounds");
+
+  board.pins.push_back({99, placement::PinDirection::Unknown, 0, 0});
+  expect_error([&] { (void)board.pin_density(10); }, "invalid cell reference");
+}
+
 void svg_test() {
   TemporaryDirectory temporary;
   fixture(temporary.path());
@@ -249,6 +286,14 @@ void svg_test() {
             utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "utilization SVG macros mask bin colors");
 
+  auto pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0});
+  const auto pin_density_svg = temporary.path() / "pin-density.svg";
+  pin_density_renderer->render(board, pin_density_svg);
+  const auto pin_density_contents = read(pin_density_svg);
+  check(pin_density_contents.find("tiny &lt;&amp;&gt; pin density") != std::string::npos, "pin density SVG title");
+  check(pin_density_contents.find("class=\"bin\"") != std::string::npos && pin_density_contents.find("pins; density") != std::string::npos,
+        "pin density SVG bins and tooltips");
+
   placement::Board empty;
   expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); }, "without geometry");
   check(!std::filesystem::exists(temporary.path() / "empty.svg"), "failed render must not leave output");
@@ -258,11 +303,8 @@ void svg_test() {
 
 int main() {
   const std::vector<std::pair<std::string_view, std::function<void()>>> tests{
-      {"Bookshelf parser", parser_test},
-      {"parser diagnostics", malformed_parser_test},
-      {"binary round trip and corruption", binary_test},
-      {"utilization grid", utilization_test},
-      {"SVG renderer", svg_test},
+      {"Bookshelf parser", parser_test},      {"parser diagnostics", malformed_parser_test}, {"binary round trip and corruption", binary_test},
+      {"utilization grid", utilization_test}, {"pin density grid", pin_density_test},        {"SVG renderer", svg_test},
   };
   std::size_t passed = 0;
   for (const auto &[name, test] : tests) {

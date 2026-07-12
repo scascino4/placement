@@ -6,6 +6,8 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <tuple>
+#include <utility>
 
 namespace placement {
 namespace {
@@ -18,6 +20,11 @@ struct Rectangle {
 
   [[nodiscard]] double right() const { return x + w; }
   [[nodiscard]] double top() const { return y + h; }
+};
+
+struct Point {
+  double x{};
+  double y{};
 };
 
 [[nodiscard]] Rectangle cell_rectangle(const Cell &cell) {
@@ -42,6 +49,39 @@ struct Rectangle {
 }
 
 [[nodiscard]] bool fixed(const Cell &cell) { return cell.location && !movable(cell); }
+
+[[nodiscard]] Point pin_position(const Cell &cell, const Pin &pin) {
+  const auto rect = cell_rectangle(cell);
+  double x = pin.offset_x;
+  double y = pin.offset_y;
+  switch (cell.location->orientation) {
+  case Orientation::N:
+    break;
+  case Orientation::E:
+    std::tie(x, y) = std::pair{y, -x};
+    break;
+  case Orientation::S:
+    x = -x;
+    y = -y;
+    break;
+  case Orientation::W:
+    std::tie(x, y) = std::pair{-y, x};
+    break;
+  case Orientation::FN:
+    x = -x;
+    break;
+  case Orientation::FE:
+    std::swap(x, y);
+    break;
+  case Orientation::FS:
+    y = -y;
+    break;
+  case Orientation::FW:
+    std::tie(x, y) = std::pair{-y, -x};
+    break;
+  }
+  return {rect.x + rect.w / 2.0 + x, rect.y + rect.h / 2.0 + y};
+}
 
 enum class Area { Movable, Placeable };
 
@@ -96,6 +136,18 @@ std::optional<double> UtilizationBin::utilization() const {
 const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t row) const {
   if (column >= columns || row >= rows)
     throw Error("utilization bin index is out of bounds");
+  return bins[static_cast<std::size_t>(row * columns + column)];
+}
+
+double PinDensityBin::density() const {
+  if (area <= 0)
+    return 0;
+  return static_cast<double>(pin_count) / area;
+}
+
+const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row) const {
+  if (column >= columns || row >= rows)
+    throw Error("pin density bin index is out of bounds");
   return bins[static_cast<std::size_t>(row * columns + column)];
 }
 
@@ -179,6 +231,60 @@ UtilizationGrid Board::utilization(double bin_size) const {
   for (auto &bin : grid.bins)
     bin.placeable_area = std::max(0.0, bin.placeable_area);
 
+  return grid;
+}
+
+PinDensityGrid Board::pin_density(double bin_size) const {
+  if (!std::isfinite(bin_size) || bin_size <= 0)
+    throw Error("pin density bin size must be finite and positive");
+
+  auto min_x = std::numeric_limits<double>::infinity();
+  auto min_y = std::numeric_limits<double>::infinity();
+  auto max_x = -std::numeric_limits<double>::infinity();
+  auto max_y = -std::numeric_limits<double>::infinity();
+  for (const auto &row : rows) {
+    for (const auto &subrow : row.subrows) {
+      const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
+      validate(rect);
+      min_x = std::min(min_x, rect.x);
+      min_y = std::min(min_y, rect.y);
+      max_x = std::max(max_x, rect.right());
+      max_y = std::max(max_y, rect.top());
+    }
+  }
+  if (!std::isfinite(min_x) || max_x <= min_x || max_y <= min_y)
+    throw Error("cannot calculate pin density without a non-empty placement region");
+
+  const auto columns = static_cast<std::uint64_t>(std::ceil((max_x - min_x) / bin_size));
+  const auto row_count = static_cast<std::uint64_t>(std::ceil((max_y - min_y) / bin_size));
+  if (columns == 0 || row_count == 0 || columns > std::numeric_limits<std::size_t>::max() / row_count)
+    throw Error("pin density grid is too large");
+
+  PinDensityGrid grid{min_x, min_y, max_x, max_y, bin_size, columns, row_count, {}};
+  grid.bins.resize(static_cast<std::size_t>(columns * row_count));
+  for (std::uint64_t row = 0; row < row_count; ++row) {
+    const auto height = std::min(bin_size, max_y - (min_y + static_cast<double>(row) * bin_size));
+    for (std::uint64_t column = 0; column < columns; ++column) {
+      const auto width = std::min(bin_size, max_x - (min_x + static_cast<double>(column) * bin_size));
+      grid.bins[static_cast<std::size_t>(row * columns + column)].area = width * height;
+    }
+  }
+
+  for (const auto &pin : pins) {
+    if (pin.cell >= cells.size())
+      throw Error("cannot calculate pin density with an invalid cell reference");
+    const auto &cell = cells[pin.cell];
+    if (!cell.location)
+      continue;
+    const auto point = pin_position(cell, pin);
+    if (!std::isfinite(point.x) || !std::isfinite(point.y))
+      throw Error("cannot calculate pin density for non-finite pin geometry");
+    if (point.x < min_x || point.x > max_x || point.y < min_y || point.y > max_y)
+      continue;
+    const auto column = point.x == max_x ? columns - 1 : static_cast<std::uint64_t>((point.x - min_x) / bin_size);
+    const auto row = point.y == max_y ? row_count - 1 : static_cast<std::uint64_t>((point.y - min_y) / bin_size);
+    ++grid.bins[static_cast<std::size_t>(row * columns + column)].pin_count;
+  }
   return grid;
 }
 

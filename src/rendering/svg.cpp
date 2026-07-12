@@ -240,6 +240,17 @@ public:
   return color.str();
 }
 
+[[nodiscard]] std::string pin_density_color(double normalized_density) {
+  const auto value = std::clamp(normalized_density, 0.0, 1.0);
+  // A sequential yellow-to-red scale keeps zero-density bins quiet and makes
+  // increasingly congested regions visually prominent.
+  const auto hue = 48.0 * (1.0 - value);
+  const auto lightness = 94.0 - 48.0 * value;
+  std::ostringstream color;
+  color << "hsl(" << std::setprecision(5) << hue << " 88% " << lightness << "%)";
+  return color.str();
+}
+
 class UtilizationSvgWriter final : public Renderer {
 public:
   explicit UtilizationSvgWriter(RenderOptions options) : options_(options) {}
@@ -302,6 +313,76 @@ private:
   RenderOptions options_;
 };
 
+class PinDensitySvgWriter final : public Renderer {
+public:
+  explicit PinDensitySvgWriter(RenderOptions options) : options_(options) {}
+
+  void render(const Board &board, const std::filesystem::path &output_path) const override {
+    Bounds core;
+    for (const auto &row : board.rows) {
+      for (const auto &subrow : row.subrows)
+        core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+    }
+    if (core.empty())
+      throw Error("cannot render pin density without a placement region");
+
+    const auto width = core.maximum_x - core.minimum_x;
+    const auto height = core.maximum_y - core.minimum_y;
+    const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
+    const auto grid = board.pin_density(bin_size);
+    std::vector<double> nonzero_densities;
+    nonzero_densities.reserve(grid.bins.size());
+    for (const auto &bin : grid.bins)
+      if (bin.pin_count != 0)
+        nonzero_densities.push_back(bin.density());
+    std::ranges::sort(nonzero_densities);
+    double color_ceiling = 1.0;
+    if (!nonzero_densities.empty()) {
+      const auto percentile_index = static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(nonzero_densities.size()))) - 1;
+      color_ceiling = nonzero_densities[percentile_index];
+    }
+
+    const auto span = std::max(width, height);
+    const auto padding = span * 0.01;
+    const auto stroke = span / 8000.0;
+    write_atomic(output_path, [&](std::ostream &output) {
+      output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
+             << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+             << "  <title>" << escape(board.name) << " pin density</title>\n"
+             << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
+             << color_ceiling << " pins per square placement unit</desc>\n"
+             << "  <style>\n"
+             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:" << stroke
+             << "}.cell-overlay{fill:none;stroke:#334155;stroke-opacity:.35;stroke-width:" << stroke << "}\n"
+             << "  </style>\n"
+             << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
+             << height + 2 * padding << "\"/>\n"
+             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+
+      for (std::uint64_t row = 0; row < grid.rows; ++row) {
+        const auto y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
+        const auto bin_height = std::min(grid.bin_size, grid.maximum_y - y);
+        for (std::uint64_t column = 0; column < grid.columns; ++column) {
+          const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
+          const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
+          const auto &bin = grid.at(column, row);
+          output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
+                 << "\" fill=\"" << pin_density_color(bin.density() / color_ceiling) << "\"><title>" << bin.pin_count << " pins; density "
+                 << bin.density() << "</title></rect>\n";
+        }
+      }
+      write_paths(output, board, CellClass::Movable, "cell-overlay");
+      write_paths(output, board, CellClass::Fixed, "cell-overlay");
+      write_paths(output, board, CellClass::FixedNonInteracting, "cell-overlay");
+      output << "  </g>\n</svg>\n";
+    });
+  }
+
+private:
+  RenderOptions options_;
+};
+
 } // namespace
 
 std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options) {
@@ -309,6 +390,8 @@ std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions o
     return std::make_unique<SvgWriter>();
   if (lower(format) == "utilization-svg")
     return std::make_unique<UtilizationSvgWriter>(options);
+  if (lower(format) == "pin-density-svg")
+    return std::make_unique<PinDensitySvgWriter>(options);
   throw Error("unsupported output format '" + std::string(format) + "'");
 }
 

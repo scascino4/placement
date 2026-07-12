@@ -76,6 +76,8 @@ $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	$(RENDER_BIN) "out/ispd2005/$*/placement.placebin" "out/ispd2005/$*/placement.svg"
 	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005/$*/placement.placebin" \
 		"out/ispd2005/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005/$*/placement.placebin" \
+		"out/ispd2005/$*/pin-density.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \

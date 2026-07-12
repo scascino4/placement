@@ -87,6 +87,27 @@ struct UtilizationGrid {
   [[nodiscard]] const UtilizationBin &at(std::uint64_t column, std::uint64_t row) const;
 };
 
+struct PinDensityBin {
+  std::uint64_t pin_count{};
+  double area{};
+
+  [[nodiscard]] double density() const;
+};
+
+struct PinDensityGrid {
+  double minimum_x{};
+  double minimum_y{};
+  double maximum_x{};
+  double maximum_y{};
+  double bin_size{};
+  std::uint64_t columns{};
+  std::uint64_t rows{};
+  // Row-major bins, starting at the placement region's lower-left corner.
+  std::vector<PinDensityBin> bins;
+
+  [[nodiscard]] const PinDensityBin &at(std::uint64_t column, std::uint64_t row) const;
+};
+
 struct Board {
   std::string name;
   std::vector<Cell> cells;
@@ -95,6 +116,7 @@ struct Board {
   std::vector<Pin> pins;
 
   [[nodiscard]] UtilizationGrid utilization(double bin_size) const;
+  [[nodiscard]] PinDensityGrid pin_density(double bin_size) const;
 };
 
 } // namespace placement

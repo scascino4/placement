@@ -11,7 +11,7 @@ make
 build/bin/placement_parse [--input-format bookshelf] \
   [--serialization-format binary] input.dp.aux output.placebin
 build/bin/placement_render [--serialization-format binary] \
-  [--output-format svg|utilization-svg] [--bin-size size] output.placebin output.svg
+  [--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] output.placebin output.svg
 make test
 make valgrind
 make outputs
@@ -21,13 +21,13 @@ make -j 4 outputs
 
 `make outputs` parses the legalized `*.dp.aux` manifest in each
 `data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`, and
-`utilization.svg` under `out/ispd2005/<design>`. It uses one job by default;
+`utilization.svg` and `pin-density.svg` under `out/ispd2005/<design>`. It uses one job by default;
 pass `-j N` to process up to `N` benchmarks concurrently. Parsing and rendering
 remain ordered within each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
 
 `make valgrind` builds debug-symbol variants of both applications in
-`build/valgrind`, then checks parsing, placement SVG rendering, and utilization
+`build/valgrind`, then checks parsing, placement, utilization, and pin-density
 SVG rendering with Valgrind Memcheck using `adaptec1`, the smallest ISPD
 benchmark. It is an opt-in smoke test because it requires Valgrind and is
 substantially slower than `make test`.
@@ -95,3 +95,9 @@ macro outlines can be interpreted directly, while white interiors mask the bin
 colors over non-placeable macro footprints. With no `--bin-size`, the bin size
 is 1% of the placement region's longest dimension; an explicit positive size
 overrides that default.
+
+The `pin-density-svg` renderer assigns each placed pin to a square bin using
+the cell orientation and the pin's center-relative offset. Bin values are pins
+per square placement unit. Colors run from pale yellow to dark red and saturate
+at the design's 95th percentile so isolated hotspots do not flatten the rest
+of the heatmap. Exact pin counts and densities are embedded in SVG tooltips.

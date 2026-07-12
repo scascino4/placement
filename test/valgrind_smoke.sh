@@ -47,6 +47,7 @@ fi
 binary="$work_dir/adaptec1.placebin"
 svg="$work_dir/adaptec1.svg"
 utilization_svg="$work_dir/adaptec1-utilization.svg"
+pin_density_svg="$work_dir/adaptec1-pin-density.svg"
 
 echo "Running parser under Valgrind (adaptec1)..."
 valgrind "${valgrind_flags[@]}" "$parse_bin" "$benchmark" "$binary"
@@ -57,5 +58,9 @@ valgrind "${valgrind_flags[@]}" "$render_bin" "$binary" "$svg"
 echo "Running utilization renderer under Valgrind (adaptec1)..."
 valgrind "${valgrind_flags[@]}" "$render_bin" --output-format utilization-svg \
     "$binary" "$utilization_svg"
+
+echo "Running pin density renderer under Valgrind (adaptec1)..."
+valgrind "${valgrind_flags[@]}" "$render_bin" --output-format pin-density-svg \
+    "$binary" "$pin_density_svg"
 
 echo "Valgrind smoke test passed."
