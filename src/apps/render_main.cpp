@@ -5,6 +5,7 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -12,43 +13,55 @@ namespace {
 
 void usage(std::ostream &output) {
   output << "Usage: placement_render [--serialization-format binary] "
-            "[--output-format svg] <input> <output>\n";
+            "[--output-format svg|utilization-svg] [--bin-size size] <input> <output>\n";
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
   try {
-    std::string serialization_format = "binary";
+    std::string serialization = "binary";
     std::string output_format = "svg";
-    int argument = 1;
+    std::optional<double> bin_size;
+    int arg = 1;
 
-    while (argument < argc && std::string_view(argv[argument]).starts_with("--")) {
-      const std::string_view option(argv[argument++]);
+    while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
+      const std::string_view option(argv[arg++]);
       if (option == "--help") {
         usage(std::cout);
         return 0;
       }
-      if (argument >= argc) {
+      if (arg >= argc)
         throw placement::Error(std::string(option) + " requires a value");
-      }
+
       if (option == "--serialization-format") {
-        serialization_format = argv[argument++];
+        serialization = argv[arg++];
       } else if (option == "--output-format") {
-        output_format = argv[argument++];
+        output_format = argv[arg++];
+      } else if (option == "--bin-size") {
+        const std::string value(argv[arg++]);
+        std::size_t consumed = 0;
+        try {
+          bin_size = std::stod(value, &consumed);
+        } catch (const std::exception &) {
+          throw placement::Error("invalid bin size '" + value + "'");
+        }
+        if (consumed != value.size())
+          throw placement::Error("invalid bin size '" + value + "'");
       } else {
         throw placement::Error("unknown option '" + std::string(option) + "'");
       }
     }
 
-    if (argc - argument != 2) {
+    if (argc - arg != 2) {
       usage(std::cerr);
       return 2;
     }
-    const std::filesystem::path input(argv[argument]);
-    const std::filesystem::path output(argv[argument + 1]);
-    auto serializer = placement::make_serializer(serialization_format);
-    auto renderer = placement::make_renderer(output_format);
+
+    const std::filesystem::path input(argv[arg]);
+    const std::filesystem::path output(argv[arg + 1]);
+    auto serializer = placement::make_serializer(serialization);
+    auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size});
     const auto board = serializer->read(input);
     renderer->render(board, output);
     std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output

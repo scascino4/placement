@@ -32,16 +32,15 @@ namespace {
   // Views avoid copying every field. Callers consume them before `line` is
   // changed by the next read.
   std::vector<std::string_view> result;
-  std::size_t position = 0;
-  while (position < line.size()) {
-    position = line.find_first_not_of(" \t\r\n", position);
-    if (position == std::string::npos) {
+  std::size_t pos = 0;
+  while (pos < line.size()) {
+    pos = line.find_first_not_of(" \t\r\n", pos);
+    if (pos == std::string::npos)
       break;
-    }
-    const auto end = line.find_first_of(" \t\r\n", position);
-    result.emplace_back(line.data() + position,
-                        (end == std::string::npos ? line.size() : end) - position);
-    position = end == std::string::npos ? line.size() : end;
+
+    const auto end = line.find_first_of(" \t\r\n", pos);
+    result.emplace_back(line.data() + pos, (end == std::string::npos ? line.size() : end) - pos);
+    pos = end == std::string::npos ? line.size() : end;
   }
   return result;
 }
@@ -181,8 +180,8 @@ struct Components {
 
   Components components;
   std::unordered_set<std::string> suffixes;
-  for (std::size_t index = 2; index < fields.size(); ++index) {
-    const std::filesystem::path component(fields[index]);
+  for (std::size_t i = 2; i < fields.size(); ++i) {
+    const std::filesystem::path component(fields[i]);
 
     const auto suffix = lower(component.extension().string());
     if (!suffixes.insert(suffix).second) {
@@ -269,7 +268,7 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
     if (board.cells.size() > *declared_nodes)
       lines.fail("more nodes than declared");
   }
-  
+
   if (!declared_nodes || !declared_terminals)
     lines.fail("missing node declarations");
   if (board.cells.size() != *declared_nodes)
@@ -286,9 +285,9 @@ using NetIndex = std::unordered_map<std::string_view, std::uint32_t>;
 [[nodiscard]] CellIndex make_cell_index(const Board &board, const std::filesystem::path &path) {
   CellIndex result;
   result.reserve(board.cells.size());
-  for (std::uint32_t index = 0; index < board.cells.size(); ++index) {
-    if (!result.emplace(board.cells[index].name, index).second) {
-      throw Error(path.string() + ": duplicate cell name '" + board.cells[index].name + "'");
+  for (std::uint32_t i = 0; i < board.cells.size(); ++i) {
+    if (!result.emplace(board.cells[i].name, i).second) {
+      throw Error(path.string() + ": duplicate cell name '" + board.cells[i].name + "'");
     }
   }
   return result;
@@ -297,9 +296,9 @@ using NetIndex = std::unordered_map<std::string_view, std::uint32_t>;
 [[nodiscard]] NetIndex make_net_index(const Board &board, const std::filesystem::path &path) {
   NetIndex result;
   result.reserve(board.nets.size());
-  for (std::uint32_t index = 0; index < board.nets.size(); ++index) {
-    if (!result.emplace(board.nets[index].name, index).second) {
-      throw Error(path.string() + ": duplicate net name '" + board.nets[index].name + "'");
+  for (std::uint32_t i = 0; i < board.nets.size(); ++i) {
+    if (!result.emplace(board.nets[i].name, i).second) {
+      throw Error(path.string() + ": duplicate net name '" + board.nets[i].name + "'");
     }
   }
   return result;
@@ -347,7 +346,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     // memory-efficient even for benchmarks with millions of pins.
     net.first_pin = board.pins.size();
     net.pin_count = degree;
-    for (std::uint64_t index = 0; index < degree; ++index) {
+    for (std::uint64_t i = 0; i < degree; ++i) {
       if (!lines.next(line))
         lines.fail("unexpected end inside net pins");
       fields = tokens(line);
@@ -399,8 +398,8 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
 
     std::vector<double> values;
     values.reserve(fields.size() - 1);
-    for (std::size_t index = 1; index < fields.size(); ++index)
-      values.push_back(number<double>(fields[index], lines, "weight"));
+    for (std::size_t i = 1; i < fields.size(); ++i)
+      values.push_back(number<double>(fields[i], lines, "weight"));
 
     // Bookshelf permits different vector dimensions for cells and nets, but
     // records of the same kind must agree so downstream consumers see a
@@ -474,8 +473,8 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
       } else if (fields[0] == "Sitesymmetry") {
         // Store the independent Bookshelf symmetry capabilities as a compact
         // bit mask; see Row::symmetry in the format-neutral model.
-        for (std::size_t index = 2; index < fields.size(); ++index) {
-          const auto value = lower(fields[index]);
+        for (std::size_t i = 2; i < fields.size(); ++i) {
+          const auto value = lower(fields[i]);
           if (value == "x")
             row.symmetry |= 1;
           else if (value == "y")
@@ -483,7 +482,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
           else if (value == "rot90" || value == "r90")
             row.symmetry |= 4;
           else if (value != "1" && value != "none")
-            lines.fail("unknown site symmetry '" + std::string(fields[index]) + "'");
+            lines.fail("unknown site symmetry '" + std::string(fields[i]) + "'");
         }
       } else if (fields[0] == "SubrowOrigin") {
         if (fields.size() < 6 || fields[3] != "NumSites" || fields[4] != ":")
@@ -555,8 +554,8 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
 
     // Optional fields appear in several equivalent Bookshelf spellings. Skip
     // standalone separators, then interpret status, DIMS, or orientation.
-    for (std::size_t index = 3; index < fields.size(); ++index) {
-      auto field = fields[index];
+    for (std::size_t i = 3; i < fields.size(); ++i) {
+      auto field = fields[i];
       if (field == ":" || field == "/")
         continue;
       if (field.starts_with('/'))

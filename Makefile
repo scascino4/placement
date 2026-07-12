@@ -11,10 +11,12 @@ BIN_DIR := $(BUILD_DIR)/bin
 PARSING_SOURCES := src/parsing/bookshelf.cpp
 RENDERING_SOURCES := src/rendering/svg.cpp
 SERIALIZATION_SOURCES := src/serialization/binary.cpp
+MODEL_SOURCES := src/model.cpp
 
 PARSING_OBJECTS := $(PARSING_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
 RENDERING_OBJECTS := $(RENDERING_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
 SERIALIZATION_OBJECTS := $(SERIALIZATION_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
+MODEL_OBJECTS := $(MODEL_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
 PARSE_OBJECT := $(OBJ_DIR)/apps/parse_main.o
 RENDER_OBJECT := $(OBJ_DIR)/apps/render_main.o
 TEST_OBJECT := $(OBJ_DIR)/test_main.o
@@ -37,14 +39,14 @@ OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
-$(PARSE_BIN): $(PARSING_OBJECTS) $(SERIALIZATION_OBJECTS) $(PARSE_OBJECT) | $(BIN_DIR)
+$(PARSE_BIN): $(PARSING_OBJECTS) $(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(PARSE_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(RENDER_BIN): $(RENDERING_OBJECTS) $(SERIALIZATION_OBJECTS) $(RENDER_OBJECT) | $(BIN_DIR)
+$(RENDER_BIN): $(RENDERING_OBJECTS) $(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(RENDER_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(TEST_BIN): $(PARSING_OBJECTS) $(RENDERING_OBJECTS) \
-		$(SERIALIZATION_OBJECTS) $(TEST_OBJECT) | $(BIN_DIR)
+		$(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(TEST_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(OBJ_DIR)/%.o: src/%.cpp
@@ -69,9 +71,11 @@ valgrind:
 outputs: all $(OUTPUT_TARGETS)
 
 $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
-	@mkdir -p out/parsed out/svg
-	$(PARSE_BIN) "data/ispd2005/$*/$*.dp.aux" "out/parsed/$*.placebin"
-	$(RENDER_BIN) "out/parsed/$*.placebin" "out/svg/$*.svg"
+	@mkdir -p "out/ispd2005/$*"
+	$(PARSE_BIN) "data/ispd2005/$*/$*.dp.aux" "out/ispd2005/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2005/$*/placement.placebin" "out/ispd2005/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005/$*/placement.placebin" \
+		"out/ispd2005/$*/utilization.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \
@@ -85,5 +89,5 @@ clean-outputs:
 	rm -rf out
 
 -include $(PARSING_OBJECTS:.o=.d) $(RENDERING_OBJECTS:.o=.d) \
-	$(SERIALIZATION_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
+	$(SERIALIZATION_OBJECTS:.o=.d) $(MODEL_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
 	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECT:.o=.d)

@@ -20,35 +20,36 @@ void usage(std::ostream &output) {
 int main(int argc, char **argv) {
   try {
     std::string input_format = "bookshelf";
-    std::string serialization_format = "binary";
-    int argument = 1;
+    std::string serialization = "binary";
+    int arg = 1;
 
-    while (argument < argc && std::string_view(argv[argument]).starts_with("--")) {
-      const std::string_view option(argv[argument++]);
+    while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
+      const std::string_view option(argv[arg++]);
       if (option == "--help") {
         usage(std::cout);
         return 0;
       }
-      if (argument >= argc) {
+      if (arg >= argc)
         throw placement::Error(std::string(option) + " requires a value");
-      }
+
       if (option == "--input-format") {
-        input_format = argv[argument++];
+        input_format = argv[arg++];
       } else if (option == "--serialization-format") {
-        serialization_format = argv[argument++];
+        serialization = argv[arg++];
       } else {
         throw placement::Error("unknown option '" + std::string(option) + "'");
       }
     }
 
-    if (argc - argument != 2) {
+    if (argc - arg != 2) {
       usage(std::cerr);
       return 2;
     }
-    const std::filesystem::path input(argv[argument]);
-    const std::filesystem::path output(argv[argument + 1]);
+
+    const std::filesystem::path input(argv[arg]);
+    const std::filesystem::path output(argv[arg + 1]);
     auto parser = placement::make_parser(input_format);
-    auto serializer = placement::make_serializer(serialization_format);
+    auto serializer = placement::make_serializer(serialization);
     auto board = parser->parse(input);
     serializer->write(board, output);
     std::cout << board.name << ": " << board.cells.size() << " cells, " << board.nets.size()

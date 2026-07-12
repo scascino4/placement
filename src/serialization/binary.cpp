@@ -58,8 +58,8 @@ public:
 
   template <std::unsigned_integral T> void integer(T value) {
     std::array<std::uint8_t, sizeof(T)> encoded{};
-    for (std::size_t index = 0; index < encoded.size(); ++index)
-      encoded[index] = static_cast<std::uint8_t>(value >> (index * 8));
+    for (std::size_t i = 0; i < encoded.size(); ++i)
+      encoded[i] = static_cast<std::uint8_t>(value >> (i * 8));
     bytes(encoded.data(), encoded.size());
   }
 
@@ -78,9 +78,8 @@ public:
       throw Error("weight vector exceeds binary format limit");
     }
     integer(static_cast<std::uint32_t>(values.size()));
-    for (const auto value : values) {
+    for (const auto value : values)
       real(value);
-    }
   }
 
   void finish() {
@@ -111,8 +110,8 @@ public:
     std::array<std::uint8_t, sizeof(T)> encoded{};
     bytes(encoded.data(), encoded.size());
     std::uint64_t value{};
-    for (std::size_t index = 0; index < encoded.size(); ++index)
-      value |= static_cast<std::uint64_t>(encoded[index]) << (index * 8);
+    for (std::size_t i = 0; i < encoded.size(); ++i)
+      value |= static_cast<std::uint64_t>(encoded[i]) << (i * 8);
     return static_cast<T>(value);
   }
 
@@ -133,11 +132,9 @@ public:
     if (size > MAX_WEIGHTS) {
       throw Error(path_.string() + ": invalid weight count");
     }
-    std::vector<double> values;
-    values.reserve(size);
-    for (std::uint32_t index = 0; index < size; ++index) {
-      values.push_back(real());
-    }
+    std::vector<double> values(size);
+    for (auto &value : values)
+      value = real();
     return values;
   }
 
@@ -307,7 +304,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
   board.nets.reserve(static_cast<std::size_t>(net_count));
   board.pins.reserve(static_cast<std::size_t>(pin_count));
 
-  for (std::uint64_t index = 0; index < cell_count; ++index) {
+  for (std::uint64_t i = 0; i < cell_count; ++i) {
     Cell cell;
     cell.name = reader.string();
     cell.width = reader.real();
@@ -337,7 +334,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     board.cells.push_back(std::move(cell));
   }
 
-  for (std::uint64_t index = 0; index < row_count; ++index) {
+  for (std::uint64_t i = 0; i < row_count; ++i) {
     Row row;
     row.coordinate = reader.real();
     row.height = reader.real();
@@ -356,7 +353,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     board.rows.push_back(std::move(row));
   }
 
-  for (std::uint64_t index = 0; index < net_count; ++index) {
+  for (std::uint64_t i = 0; i < net_count; ++i) {
     Net net;
     net.name = reader.string();
     net.first_pin = reader.integer<std::uint64_t>();
@@ -367,7 +364,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     board.nets.push_back(std::move(net));
   }
 
-  for (std::uint64_t index = 0; index < pin_count; ++index) {
+  for (std::uint64_t i = 0; i < pin_count; ++i) {
     Pin pin;
     pin.cell = reader.integer<std::uint32_t>();
     if (pin.cell >= cell_count) {
@@ -384,9 +381,8 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
 }
 
 std::unique_ptr<Serializer> make_serializer(std::string_view format) {
-  if (lower(format) == "binary") {
+  if (lower(format) == "binary")
     return std::make_unique<BinarySerializer>();
-  }
   throw Error("unsupported serialization format '" + std::string(format) + "'");
 }
 

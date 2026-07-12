@@ -65,12 +65,36 @@ struct Net {
   std::vector<double> weights;
 };
 
+struct UtilizationBin {
+  double movable_area{};
+  double placeable_area{};
+
+  // Bins without usable row area have no utilization value.
+  [[nodiscard]] std::optional<double> utilization() const;
+};
+
+struct UtilizationGrid {
+  double minimum_x{};
+  double minimum_y{};
+  double maximum_x{};
+  double maximum_y{};
+  double bin_size{};
+  std::uint64_t columns{};
+  std::uint64_t rows{};
+  // Row-major bins, starting at the placement region's lower-left corner.
+  std::vector<UtilizationBin> bins;
+
+  [[nodiscard]] const UtilizationBin &at(std::uint64_t column, std::uint64_t row) const;
+};
+
 struct Board {
   std::string name;
   std::vector<Cell> cells;
   std::vector<Row> rows;
   std::vector<Net> nets;
   std::vector<Pin> pins;
+
+  [[nodiscard]] UtilizationGrid utilization(double bin_size) const;
 };
 
 } // namespace placement

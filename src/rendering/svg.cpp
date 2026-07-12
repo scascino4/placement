@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <sstream>
 #include <string>
 
 namespace placement {
@@ -145,6 +146,41 @@ void write_paths(std::ostream &output, const Board &board, CellClass wanted,
   return output.string() + ".tmp." + std::to_string(tick);
 }
 
+template <typename Write> void write_atomic(const std::filesystem::path &path, Write write) {
+  if (!path.parent_path().empty())
+    std::filesystem::create_directories(path.parent_path());
+
+  // Write beside the destination so failures never expose a partial SVG.
+  const auto temporary = temporary_path(path);
+  try {
+    std::ofstream output(temporary);
+    if (!output)
+      throw Error("cannot create " + path.string());
+
+    output << std::setprecision(12);
+    write(output);
+    output.flush();
+    if (!output)
+      throw Error("failed while writing " + path.string());
+    output.close();
+
+    // Some platforms cannot replace an existing file with rename.
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
+    if (error) {
+      std::filesystem::remove(path, error);
+      error.clear();
+      std::filesystem::rename(temporary, path, error);
+    }
+    if (error)
+      throw Error("cannot replace " + path.string() + ": " + error.message());
+  } catch (...) {
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    throw;
+  }
+}
+
 class SvgWriter final : public Renderer {
 public:
   void render(const Board &board, const std::filesystem::path &output_path) const override {
@@ -166,20 +202,7 @@ public:
     const auto padding = span * 0.01;
     const auto stroke = span / 6000.0;
 
-    if (!output_path.parent_path().empty()) {
-      std::filesystem::create_directories(output_path.parent_path());
-    }
-
-    // Write beside the destination first so a failed render cannot leave a
-    // partial SVG at the requested path.
-    const auto temporary = temporary_path(output_path);
-    try {
-      std::ofstream output(temporary);
-      if (!output)
-        throw Error("cannot create " + output_path.string());
-
-      output << std::setprecision(12);
-
+    write_atomic(output_path, [&](std::ostream &output) {
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
              << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' '
              << -padding << ' ' << width + 2 * padding << ' ' << height + 2 * padding
@@ -218,35 +241,96 @@ public:
       write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni");
 
       output << "  </g>\n</svg>\n";
-      output.flush();
-      if (!output)
-        throw Error("failed while writing " + output_path.string());
-      output.close();
-
-      // Some platforms do not allow rename to replace an existing file, so
-      // retry after removing the old destination.
-      std::error_code error;
-      std::filesystem::rename(temporary, output_path, error);
-      if (error) {
-        std::filesystem::remove(output_path, error);
-        error.clear();
-        std::filesystem::rename(temporary, output_path, error);
-      }
-      if (error)
-        throw Error("cannot replace " + output_path.string() + ": " + error.message());
-    } catch (...) {
-      std::error_code ignored;
-      std::filesystem::remove(temporary, ignored);
-      throw;
-    }
+    });
   }
+};
+
+[[nodiscard]] std::string utilization_color(double utilization) {
+  const auto clamped = std::clamp(utilization, 0.0, 1.0);
+  const auto hue = 120.0 * (1.0 - clamped);
+  std::ostringstream color;
+  color << "hsl(" << std::setprecision(5) << hue << " 72% 48%)";
+  return color.str();
+}
+
+class UtilizationSvgWriter final : public Renderer {
+public:
+  explicit UtilizationSvgWriter(RenderOptions options) : options_(options) {}
+
+  void render(const Board &board, const std::filesystem::path &output_path) const override {
+    Bounds core;
+    for (const auto &row : board.rows) {
+      for (const auto &subrow : row.subrows)
+        core.include({subrow.origin, row.coordinate,
+                      static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+    }
+    if (core.empty())
+      throw Error("cannot render utilization without a placement region");
+
+    const auto width = core.maximum_x - core.minimum_x;
+    const auto height = core.maximum_y - core.minimum_y;
+    const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
+    const auto grid = board.utilization(bin_size);
+    const auto span = std::max(width, height);
+    const auto padding = span * 0.01;
+    const auto stroke = span / 8000.0;
+
+    write_atomic(output_path, [&](std::ostream &output) {
+      output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' '
+             << -padding << ' ' << width + 2 * padding << ' ' << height + 2 * padding
+             << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+             << "  <title>" << escape(board.name) << " utilization</title>\n"
+             << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size "
+             << grid.bin_size
+             << "; green is low utilization, red is 100 percent or greater, gray is not "
+                "placeable</desc>\n"
+             << "  <style>\n"
+             << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:"
+             << stroke
+             << "}.movable-overlay{fill:#f8fafc;fill-opacity:.42;stroke:none}"
+                ".fixed-overlay{fill:#f8fafc;stroke:#1f2937;stroke-width:"
+             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke
+             << "}\n"
+             << "  </style>\n"
+             << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding
+             << "\" width=\"" << width + 2 * padding << "\" height=\"" << height + 2 * padding
+             << "\"/>\n"
+             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y
+             << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+
+      for (std::uint64_t row = 0; row < grid.rows; ++row) {
+        const auto y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
+        const auto bin_height = std::min(grid.bin_size, grid.maximum_y - y);
+        for (std::uint64_t column = 0; column < grid.columns; ++column) {
+          const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
+          const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
+          const auto utilization = grid.at(column, row).utilization();
+          output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\""
+                 << bin_width << "\" height=\"" << bin_height << "\" fill=\""
+                 << (utilization ? utilization_color(*utilization) : std::string("#d1d5db"))
+                 << "\"/>\n";
+        }
+      }
+
+      write_paths(output, board, CellClass::Movable, "movable-overlay");
+      write_paths(output, board, CellClass::Fixed, "fixed-overlay");
+      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
+      output << "  </g>\n</svg>\n";
+    });
+  }
+
+private:
+  RenderOptions options_;
 };
 
 } // namespace
 
-std::unique_ptr<Renderer> make_renderer(std::string_view format) {
+std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options) {
   if (lower(format) == "svg")
     return std::make_unique<SvgWriter>();
+  if (lower(format) == "utilization-svg")
+    return std::make_unique<UtilizationSvgWriter>(options);
   throw Error("unsupported output format '" + std::string(format) + "'");
 }
 

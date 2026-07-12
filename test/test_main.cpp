@@ -4,6 +4,7 @@
 #include "placement/serialization/serializer.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -73,6 +74,8 @@ void check(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
 }
+
+[[nodiscard]] bool close(double a, double b) { return std::abs(a - b) < 1e-12; }
 
 template <typename Function> void expect_error(Function &&function, std::string_view fragment) {
   try {
@@ -182,6 +185,56 @@ void binary_test() {
                "unsupported serialization format");
 }
 
+void utilization_test() {
+  placement::Board board;
+  placement::Row row;
+  row.coordinate = 0;
+  row.height = 10;
+  row.site_spacing = 1;
+  row.subrows.push_back({0, 20});
+  board.rows.push_back(row);
+
+  placement::Cell movable;
+  movable.name = "movable";
+  movable.width = 10;
+  movable.height = 5;
+  movable.location.emplace();
+  movable.location->x = 5;
+  board.cells.push_back(movable);
+
+  placement::Cell fixed;
+  fixed.name = "macro";
+  fixed.width = 2;
+  fixed.height = 10;
+  fixed.kind = placement::CellKind::Terminal;
+  fixed.location.emplace();
+  fixed.location->status = placement::PlacementStatus::Fixed;
+  board.cells.push_back(fixed);
+
+  const auto grid = board.utilization(10);
+  check(grid.columns == 2 && grid.rows == 1 && grid.bins.size() == 2,
+        "utilization grid dimensions");
+  check(close(grid.at(0, 0).movable_area, 25) && close(grid.at(1, 0).movable_area, 25),
+        "movable area is split at bin boundaries");
+  check(close(grid.at(0, 0).placeable_area, 80) && close(grid.at(1, 0).placeable_area, 100),
+        "fixed geometry is excluded from placeable area");
+  check(close(*grid.at(0, 0).utilization(), 0.3125) && close(*grid.at(1, 0).utilization(), 0.25),
+        "utilization ratios");
+
+  placement::Board fragmented;
+  row.subrows = {{0, 4}, {6, 4}};
+  fragmented.rows.push_back(row);
+  fixed.width = 4;
+  fixed.location->x = 3;
+  fragmented.cells.push_back(fixed);
+  const auto fragmented_grid = fragmented.utilization(10);
+  check(close(fragmented_grid.at(0, 0).placeable_area, 60),
+        "fixed blockage excludes only its intersection with legal rows");
+
+  expect_error([&] { (void)board.utilization(0); }, "finite and positive");
+  expect_error([&] { (void)grid.at(2, 0); }, "out of bounds");
+}
+
 void svg_test() {
   TemporaryDirectory temporary;
   fixture(temporary.path());
@@ -205,6 +258,19 @@ void svg_test() {
         "SVG cell classes");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
 
+  auto utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0});
+  const auto utilization_svg = temporary.path() / "utilization.svg";
+  utilization_renderer->render(board, utilization_svg);
+  const auto utilization_contents = read(utilization_svg);
+  check(utilization_contents.find("tiny &lt;&amp;&gt; utilization") != std::string::npos,
+        "utilization SVG title");
+  check(utilization_contents.find("class=\"bin\"") != std::string::npos &&
+            utilization_contents.find("fixed-overlay") != std::string::npos,
+        "utilization SVG bins and fixed objects");
+  check(utilization_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
+            utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+        "utilization SVG macros mask bin colors");
+
   placement::Board empty;
   expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); },
                "without geometry");
@@ -219,6 +285,7 @@ int main() {
       {"Bookshelf parser", parser_test},
       {"parser diagnostics", malformed_parser_test},
       {"binary round trip and corruption", binary_test},
+      {"utilization grid", utilization_test},
       {"SVG renderer", svg_test},
   };
   std::size_t passed = 0;

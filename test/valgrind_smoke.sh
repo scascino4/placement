@@ -46,11 +46,16 @@ fi
 
 binary="$work_dir/adaptec1.placebin"
 svg="$work_dir/adaptec1.svg"
+utilization_svg="$work_dir/adaptec1-utilization.svg"
 
 echo "Running parser under Valgrind (adaptec1)..."
 valgrind "${valgrind_flags[@]}" "$parse_bin" "$benchmark" "$binary"
 
 echo "Running renderer under Valgrind (adaptec1)..."
 valgrind "${valgrind_flags[@]}" "$render_bin" "$binary" "$svg"
+
+echo "Running utilization renderer under Valgrind (adaptec1)..."
+valgrind "${valgrind_flags[@]}" "$render_bin" --output-format utilization-svg \
+    "$binary" "$utilization_svg"
 
 echo "Valgrind smoke test passed."

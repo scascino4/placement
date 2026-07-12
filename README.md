@@ -11,7 +11,7 @@ make
 build/bin/placement_parse [--input-format bookshelf] \
   [--serialization-format binary] input.dp.aux output.placebin
 build/bin/placement_render [--serialization-format binary] \
-  [--output-format svg] output.placebin output.svg
+  [--output-format svg|utilization-svg] [--bin-size size] output.placebin output.svg
 make test
 make valgrind
 make outputs
@@ -20,16 +20,17 @@ make -j 4 outputs
 ```
 
 `make outputs` parses the legalized `*.dp.aux` manifest in each
-`data/ispd2005` benchmark and creates `out/parsed/<design>.placebin` and
-`out/svg/<design>.svg`. It uses one job by default; pass `-j N` to process up
-to `N` benchmarks concurrently. Parsing and rendering remain ordered within
-each benchmark. `make clean` removes compiled files;
+`data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`, and
+`utilization.svg` under `out/ispd2005/<design>`. It uses one job by default;
+pass `-j N` to process up to `N` benchmarks concurrently. Parsing and rendering
+remain ordered within each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
 
 `make valgrind` builds debug-symbol variants of both applications in
-`build/valgrind`, then checks parsing and SVG rendering with Valgrind Memcheck
-using `adaptec1`, the smallest ISPD benchmark. It is an opt-in smoke test
-because it requires Valgrind and is substantially slower than `make test`.
+`build/valgrind`, then checks parsing, placement SVG rendering, and utilization
+SVG rendering with Valgrind Memcheck using `adaptec1`, the smallest ISPD
+benchmark. It is an opt-in smoke test because it requires Valgrind and is
+substantially slower than `make test`.
 Temporary placement and SVG outputs are removed automatically. Set
 `VALGRIND_FLAGS` to replace the default Memcheck arguments or
 `VALGRIND_CXXFLAGS` to replace the debug build flags.
@@ -85,3 +86,12 @@ placement convention that Y increases upward and swaps dimensions for rotated
 orientations. Cells are grouped into paths to keep multi-million-cell outputs
 manageable. Connectivity is retained in the binary but is intentionally not
 drawn in this first renderer.
+
+The `utilization-svg` renderer divides the placement region into square bins
+and colors them from green (low utilization) through yellow to red (100% or
+greater). Utilization is movable-cell overlap divided by legal row area after
+subtracting fixed-object overlap. Fixed objects remain visible in dark gray so
+macro outlines can be interpreted directly, while white interiors mask the bin
+colors over non-placeable macro footprints. With no `--bin-size`, the bin size
+is 1% of the placement region's longest dimension; an explicit positive size
+overrides that default.
