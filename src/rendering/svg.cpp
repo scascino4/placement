@@ -240,17 +240,6 @@ public:
   return color.str();
 }
 
-[[nodiscard]] std::string pin_density_color(double normalized_density) {
-  const auto value = std::clamp(normalized_density, 0.0, 1.0);
-  // A sequential yellow-to-red scale keeps zero-density bins quiet and makes
-  // increasingly congested regions visually prominent.
-  const auto hue = 48.0 * (1.0 - value);
-  const auto lightness = 94.0 - 48.0 * value;
-  std::ostringstream color;
-  color << "hsl(" << std::setprecision(5) << hue << " 88% " << lightness << "%)";
-  return color.str();
-}
-
 class UtilizationSvgWriter final : public Renderer {
 public:
   explicit UtilizationSvgWriter(RenderOptions options) : options_(options) {}
@@ -330,6 +319,7 @@ public:
     const auto height = core.maximum_y - core.minimum_y;
     const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
     const auto grid = board.pin_density(bin_size);
+    const auto utilization_grid = board.utilization(bin_size);
     std::vector<double> nonzero_densities;
     nonzero_densities.reserve(grid.bins.size());
     for (const auto &bin : grid.bins)
@@ -354,7 +344,9 @@ public:
              << color_ceiling << " pins per square placement unit</desc>\n"
              << "  <style>\n"
              << "    .background{fill:#f8fafc}.bin{stroke:#ffffff;stroke-opacity:.38;stroke-width:" << stroke
-             << "}.cell-overlay{fill:none;stroke:#334155;stroke-opacity:.35;stroke-width:" << stroke << "}\n"
+             << "}.movable-overlay{fill:#f8fafc;fill-opacity:.42;stroke:none}"
+                ".fixed-overlay{fill:#f8fafc;stroke:#1f2937;stroke-width:"
+             << stroke << "}.fixed-ni-overlay{fill:#f8fafc;stroke:#334155;stroke-width:" << stroke << "}\n"
              << "  </style>\n"
              << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n"
@@ -367,14 +359,15 @@ public:
           const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
           const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
           const auto &bin = grid.at(column, row);
+          const auto placeable = utilization_grid.at(column, row).utilization().has_value();
           output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
-                 << "\" fill=\"" << pin_density_color(bin.density() / color_ceiling) << "\"><title>" << bin.pin_count << " pins; density "
-                 << bin.density() << "</title></rect>\n";
+                 << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling) : std::string("#d1d5db")) << "\"><title>"
+                 << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
         }
       }
-      write_paths(output, board, CellClass::Movable, "cell-overlay");
-      write_paths(output, board, CellClass::Fixed, "cell-overlay");
-      write_paths(output, board, CellClass::FixedNonInteracting, "cell-overlay");
+      write_paths(output, board, CellClass::Movable, "movable-overlay");
+      write_paths(output, board, CellClass::Fixed, "fixed-overlay");
+      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
       output << "  </g>\n</svg>\n";
     });
   }

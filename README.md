@@ -98,6 +98,8 @@ overrides that default.
 
 The `pin-density-svg` renderer assigns each placed pin to a square bin using
 the cell orientation and the pin's center-relative offset. Bin values are pins
-per square placement unit. Colors run from pale yellow to dark red and saturate
-at the design's 95th percentile so isolated hotspots do not flatten the rest
-of the heatmap. Exact pin counts and densities are embedded in SVG tooltips.
+per square placement unit. Like utilization, colors run from green through
+yellow to red; pin-density colors saturate at the design's 95th percentile so
+isolated hotspots do not flatten the rest of the heatmap. Bins without legal
+placement area are gray. Exact pin counts and densities are embedded in SVG
+tooltips.

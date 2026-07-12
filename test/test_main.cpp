@@ -293,6 +293,10 @@ void svg_test() {
   check(pin_density_contents.find("tiny &lt;&amp;&gt; pin density") != std::string::npos, "pin density SVG title");
   check(pin_density_contents.find("class=\"bin\"") != std::string::npos && pin_density_contents.find("pins; density") != std::string::npos,
         "pin density SVG bins and tooltips");
+  check(pin_density_contents.find(".movable-overlay{fill:#f8fafc;fill-opacity:.42") != std::string::npos &&
+            pin_density_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
+            pin_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+        "pin density SVG masks macros consistently with utilization");
 
   placement::Board empty;
   expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); }, "without geometry");
