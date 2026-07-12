@@ -51,14 +51,14 @@ namespace {
 struct Rectangle {
   double x{};
   double y{};
-  double width{};
-  double height{};
+  double w{};
+  double h{};
 };
 
 [[nodiscard]] Rectangle cell_rectangle(const Cell &cell) {
   const auto &location = *cell.location;
-  double width = location.width.value_or(cell.width);
-  double height = location.height.value_or(cell.height);
+  double w = location.width.value_or(cell.width);
+  double h = location.height.value_or(cell.height);
 
   // A quarter-turn changes the axis-aligned footprint. Reflections preserve
   // dimensions, including the reflected quarter-turn orientations FE/FW.
@@ -67,32 +67,32 @@ struct Rectangle {
   case Orientation::W:
   case Orientation::FE:
   case Orientation::FW:
-    std::swap(width, height);
+    std::swap(w, h);
     break;
   default:
     break;
   }
 
-  return {location.x, location.y, width, height};
+  return {location.x, location.y, w, h};
 }
 
 struct Bounds {
-  double minimum_x{std::numeric_limits<double>::infinity()};
-  double minimum_y{std::numeric_limits<double>::infinity()};
-  double maximum_x{-std::numeric_limits<double>::infinity()};
-  double maximum_y{-std::numeric_limits<double>::infinity()};
+  double min_x{std::numeric_limits<double>::infinity()};
+  double min_y{std::numeric_limits<double>::infinity()};
+  double max_x{-std::numeric_limits<double>::infinity()};
+  double max_y{-std::numeric_limits<double>::infinity()};
 
-  void include(const Rectangle &rectangle) {
-    if (!std::isfinite(rectangle.x) || !std::isfinite(rectangle.y) || !std::isfinite(rectangle.width) || !std::isfinite(rectangle.height) ||
-        rectangle.width < 0 || rectangle.height < 0)
+  void include(const Rectangle &rect) {
+    if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) || !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
       throw Error("cannot render non-finite or negative geometry");
-    minimum_x = std::min(minimum_x, rectangle.x);
-    minimum_y = std::min(minimum_y, rectangle.y);
-    maximum_x = std::max(maximum_x, rectangle.x + rectangle.width);
-    maximum_y = std::max(maximum_y, rectangle.y + rectangle.height);
+
+    min_x = std::min(min_x, rect.x);
+    min_y = std::min(min_y, rect.y);
+    max_x = std::max(max_x, rect.x + rect.w);
+    max_y = std::max(max_y, rect.y + rect.h);
   }
 
-  [[nodiscard]] bool empty() const { return !std::isfinite(minimum_x); }
+  [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
 };
 
 enum class CellClass { Movable, Fixed, FixedNonInteracting };
@@ -116,13 +116,13 @@ void write_paths(std::ostream &output, const Board &board, CellClass wanted, std
     if (!cell.location || cell_class(cell) != wanted)
       continue;
 
-    const auto rectangle = cell_rectangle(cell);
-    if (rectangle.width == 0 || rectangle.height == 0)
+    const auto rect = cell_rectangle(cell);
+    if (rect.w == 0 || rect.h == 0)
       continue;
 
     if (in_path == 0)
       output << "    <path class=\"" << css_class << "\" d=\"";
-    output << 'M' << rectangle.x << ' ' << rectangle.y << 'h' << rectangle.width << 'v' << rectangle.height << 'h' << -rectangle.width << 'z';
+    output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.w << 'v' << rect.h << 'h' << -rect.w << 'z';
 
     ++in_path;
     if (in_path == CELLS_PER_PATH) {
@@ -135,7 +135,7 @@ void write_paths(std::ostream &output, const Board &board, CellClass wanted, std
     output << "\"/>\n";
 }
 
-[[nodiscard]] std::filesystem::path temporary_path(const std::filesystem::path &output) {
+[[nodiscard]] std::filesystem::path temp_path(const std::filesystem::path &output) {
   const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
   return output.string() + ".tmp." + std::to_string(tick);
 }
@@ -145,9 +145,9 @@ template <typename Write> void write_atomic(const std::filesystem::path &path, W
     std::filesystem::create_directories(path.parent_path());
 
   // Write beside the destination so failures never expose a partial SVG.
-  const auto temporary = temporary_path(path);
+  const auto temp = temp_path(path);
   try {
-    std::ofstream output(temporary);
+    std::ofstream output(temp);
     if (!output)
       throw Error("cannot create " + path.string());
 
@@ -160,17 +160,17 @@ template <typename Write> void write_atomic(const std::filesystem::path &path, W
 
     // Some platforms cannot replace an existing file with rename.
     std::error_code error;
-    std::filesystem::rename(temporary, path, error);
+    std::filesystem::rename(temp, path, error);
     if (error) {
       std::filesystem::remove(path, error);
       error.clear();
-      std::filesystem::rename(temporary, path, error);
+      std::filesystem::rename(temp, path, error);
     }
     if (error)
       throw Error("cannot replace " + path.string() + ": " + error.message());
   } catch (...) {
     std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(temp, ignored);
     throw;
   }
 }
@@ -189,8 +189,8 @@ public:
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
 
-    const auto width = std::max(1.0, bounds.maximum_x - bounds.minimum_x);
-    const auto height = std::max(1.0, bounds.maximum_y - bounds.minimum_y);
+    const auto width = std::max(1.0, bounds.max_x - bounds.min_x);
+    const auto height = std::max(1.0, bounds.max_y - bounds.min_y);
     const auto span = std::max(width, height);
     const auto padding = span * 0.01;
     const auto stroke = span / 6000.0;
@@ -214,7 +214,7 @@ public:
       // Placement coordinates use an upward-positive Y axis, while SVG uses
       // a downward-positive one. Translate to the computed bounds, then flip
       // the geometry group without also flipping title or descriptive text.
-      output << "  <g transform=\"translate(" << -bounds.minimum_x << ' ' << bounds.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+      output << "  <g transform=\"translate(" << -bounds.min_x << ' ' << bounds.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (const auto &row : board.rows) {
         for (const auto &subrow : row.subrows) {
@@ -253,8 +253,8 @@ public:
     if (core.empty())
       throw Error("cannot render utilization without a placement region");
 
-    const auto width = core.maximum_x - core.minimum_x;
-    const auto height = core.maximum_y - core.minimum_y;
+    const auto width = core.max_x - core.min_x;
+    const auto height = core.max_y - core.min_y;
     const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
     const auto grid = board.utilization(bin_size);
     const auto span = std::max(width, height);
@@ -277,14 +277,14 @@ public:
              << "  </style>\n"
              << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n"
-             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+             << "  <g transform=\"translate(" << -core.min_x << ' ' << core.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (std::uint64_t row = 0; row < grid.rows; ++row) {
-        const auto y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
-        const auto bin_height = std::min(grid.bin_size, grid.maximum_y - y);
+        const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
+        const auto bin_height = std::min(grid.bin_size, grid.max_y - y);
         for (std::uint64_t column = 0; column < grid.columns; ++column) {
-          const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
-          const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
+          const auto x = grid.min_x + static_cast<double>(column) * grid.bin_size;
+          const auto bin_width = std::min(grid.bin_size, grid.max_x - x);
           const auto utilization = grid.at(column, row).utilization();
           output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
                  << "\" fill=\"" << (utilization ? utilization_color(*utilization) : std::string("#d1d5db")) << "\"/>\n";
@@ -315,17 +315,19 @@ public:
     if (core.empty())
       throw Error("cannot render pin density without a placement region");
 
-    const auto width = core.maximum_x - core.minimum_x;
-    const auto height = core.maximum_y - core.minimum_y;
+    const auto width = core.max_x - core.min_x;
+    const auto height = core.max_y - core.min_y;
     const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
     const auto grid = board.pin_density(bin_size);
     const auto utilization_grid = board.utilization(bin_size);
+
     std::vector<double> nonzero_densities;
     nonzero_densities.reserve(grid.bins.size());
     for (const auto &bin : grid.bins)
       if (bin.pin_count != 0)
         nonzero_densities.push_back(bin.density());
-    std::ranges::sort(nonzero_densities);
+    std::sort(nonzero_densities.begin(), nonzero_densities.end());
+
     double color_ceiling = 1.0;
     if (!nonzero_densities.empty()) {
       const auto percentile_index = static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(nonzero_densities.size()))) - 1;
@@ -350,14 +352,14 @@ public:
              << "  </style>\n"
              << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n"
-             << "  <g transform=\"translate(" << -core.minimum_x << ' ' << core.maximum_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+             << "  <g transform=\"translate(" << -core.min_x << ' ' << core.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (std::uint64_t row = 0; row < grid.rows; ++row) {
-        const auto y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
-        const auto bin_height = std::min(grid.bin_size, grid.maximum_y - y);
+        const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
+        const auto bin_height = std::min(grid.bin_size, grid.max_y - y);
         for (std::uint64_t column = 0; column < grid.columns; ++column) {
-          const auto x = grid.minimum_x + static_cast<double>(column) * grid.bin_size;
-          const auto bin_width = std::min(grid.bin_size, grid.maximum_x - x);
+          const auto x = grid.min_x + static_cast<double>(column) * grid.bin_size;
+          const auto bin_width = std::min(grid.bin_size, grid.max_x - x);
           const auto &bin = grid.at(column, row);
           const auto placeable = utilization_grid.at(column, row).utilization().has_value();
           output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height

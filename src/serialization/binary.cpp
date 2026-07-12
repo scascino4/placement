@@ -136,9 +136,9 @@ public:
     return values;
   }
 
-  template <typename Enum> [[nodiscard]] Enum enumeration(std::uint8_t maximum, std::string_view name) {
+  template <typename Enum> [[nodiscard]] Enum enumeration(std::uint8_t max, std::string_view name) {
     const auto value = integer<std::uint8_t>();
-    if (value > maximum)
+    if (value > max)
       throw Error(path_.string() + ": invalid " + std::string(name));
     return static_cast<Enum>(value);
   }
@@ -160,7 +160,7 @@ private:
   std::ifstream stream_;
 };
 
-[[nodiscard]] std::filesystem::path temporary_path(const std::filesystem::path &output) {
+[[nodiscard]] std::filesystem::path temp_path(const std::filesystem::path &output) {
   const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
   return output.string() + ".tmp." + std::to_string(tick);
 }
@@ -172,22 +172,22 @@ template <typename Function> void atomic_output(const std::filesystem::path &out
 
   // Never expose a partially written placement. The fallback removal handles
   // platforms whose rename operation cannot replace an existing file.
-  const auto temporary = temporary_path(output);
+  const auto temp = temp_path(output);
   try {
-    function(temporary);
+    function(temp);
     std::error_code error;
-    std::filesystem::rename(temporary, output, error);
+    std::filesystem::rename(temp, output, error);
     if (error) {
       std::filesystem::remove(output, error);
       error.clear();
-      std::filesystem::rename(temporary, output, error);
+      std::filesystem::rename(temp, output, error);
     }
     if (error) {
       throw Error("cannot replace " + output.string() + ": " + error.message());
     }
   } catch (...) {
     std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+    std::filesystem::remove(temp, ignored);
     throw;
   }
 }
@@ -200,8 +200,8 @@ void check_count(std::uint64_t count, const Input &input, std::string_view name)
 } // namespace
 
 void BinarySerializer::write(const Board &board, const std::filesystem::path &output) const {
-  atomic_output(output, [&](const auto &temporary) {
-    Output writer(temporary);
+  atomic_output(output, [&](const auto &temp) {
+    Output writer(temp);
 
     // The fixed-size header leaves flags available for future compatible
     // additions while major versions continue to identify incompatible data.
@@ -287,14 +287,17 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
 
   Board board;
   board.name = reader.string();
+
   const auto cell_count = reader.integer<std::uint64_t>();
   const auto row_count = reader.integer<std::uint64_t>();
   const auto net_count = reader.integer<std::uint64_t>();
   const auto pin_count = reader.integer<std::uint64_t>();
+
   check_count(cell_count, reader, "cell");
   check_count(row_count, reader, "row");
   check_count(net_count, reader, "net");
   check_count(pin_count, reader, "pin");
+
   board.cells.reserve(static_cast<std::size_t>(cell_count));
   board.rows.reserve(static_cast<std::size_t>(row_count));
   board.nets.reserve(static_cast<std::size_t>(net_count));
@@ -306,26 +309,32 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     cell.width = reader.real();
     cell.height = reader.real();
     cell.kind = reader.enumeration<CellKind>(2, "cell kind");
+
     const auto has_location = reader.integer<std::uint8_t>();
     if (has_location > 1) {
       throw Error(input.string() + ": invalid placement presence flag");
     }
+
     if (has_location) {
       Location location;
       location.x = reader.real();
       location.y = reader.real();
       location.orientation = reader.enumeration<Orientation>(7, "orientation");
       location.status = reader.enumeration<PlacementStatus>(2, "placement status");
+
       const auto has_dimensions = reader.integer<std::uint8_t>();
       if (has_dimensions > 1) {
         throw Error(input.string() + ": invalid dimensions presence flag");
       }
+
       if (has_dimensions) {
         location.width = reader.real();
         location.height = reader.real();
       }
+
       cell.location = location;
     }
+
     cell.weights = reader.weights();
     board.cells.push_back(std::move(cell));
   }
@@ -337,10 +346,12 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     row.site_width = reader.real();
     row.site_spacing = reader.real();
     row.site_orientation = reader.enumeration<Orientation>(7, "row orientation");
+
     row.symmetry = reader.integer<std::uint8_t>();
     if (row.symmetry > 7) {
       throw Error(input.string() + ": invalid row symmetry");
     }
+
     const auto subrow_count = reader.integer<std::uint64_t>();
     check_count(subrow_count, reader, "subrow");
     row.subrows.reserve(static_cast<std::size_t>(subrow_count));
@@ -362,10 +373,12 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
 
   for (std::uint64_t i = 0; i < pin_count; ++i) {
     Pin pin;
+
     pin.cell = reader.integer<std::uint32_t>();
     if (pin.cell >= cell_count) {
       throw Error(input.string() + ": pin cell index is out of bounds");
     }
+
     pin.direction = reader.enumeration<PinDirection>(3, "pin direction");
     pin.offset_x = reader.real();
     pin.offset_y = reader.real();

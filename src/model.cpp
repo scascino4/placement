@@ -95,24 +95,24 @@ void add_overlap(UtilizationGrid &grid, const Rectangle &rect, Area area, double
   if (rect.w == 0 || rect.h == 0)
     return;
 
-  const auto x0 = std::max(rect.x, grid.minimum_x);
-  const auto y0 = std::max(rect.y, grid.minimum_y);
-  const auto x1 = std::min(rect.right(), grid.maximum_x);
-  const auto y1 = std::min(rect.top(), grid.maximum_y);
+  const auto x0 = std::max(rect.x, grid.min_x);
+  const auto y0 = std::max(rect.y, grid.min_y);
+  const auto x1 = std::min(rect.right(), grid.max_x);
+  const auto y1 = std::min(rect.top(), grid.max_y);
   if (x0 >= x1 || y0 >= y1)
     return;
 
-  const auto col0 = static_cast<std::uint64_t>((x0 - grid.minimum_x) / grid.bin_size);
-  const auto row0 = static_cast<std::uint64_t>((y0 - grid.minimum_y) / grid.bin_size);
-  const auto col1 = std::min(grid.columns - 1, static_cast<std::uint64_t>((std::nextafter(x1, x0) - grid.minimum_x) / grid.bin_size));
-  const auto row1 = std::min(grid.rows - 1, static_cast<std::uint64_t>((std::nextafter(y1, y0) - grid.minimum_y) / grid.bin_size));
+  const auto col0 = static_cast<std::uint64_t>((x0 - grid.min_x) / grid.bin_size);
+  const auto row0 = static_cast<std::uint64_t>((y0 - grid.min_y) / grid.bin_size);
+  const auto col1 = std::min(grid.columns - 1, static_cast<std::uint64_t>((std::nextafter(x1, x0) - grid.min_x) / grid.bin_size));
+  const auto row1 = std::min(grid.rows - 1, static_cast<std::uint64_t>((std::nextafter(y1, y0) - grid.min_y) / grid.bin_size));
 
   for (auto row = row0; row <= row1; ++row) {
-    const auto bin_y = grid.minimum_y + static_cast<double>(row) * grid.bin_size;
+    const auto bin_y = grid.min_y + static_cast<double>(row) * grid.bin_size;
     const auto overlap_h = std::min(y1, bin_y + grid.bin_size) - std::max(y0, bin_y);
 
     for (auto col = col0; col <= col1; ++col) {
-      const auto bin_x = grid.minimum_x + static_cast<double>(col) * grid.bin_size;
+      const auto bin_x = grid.min_x + static_cast<double>(col) * grid.bin_size;
       const auto overlap_w = std::min(x1, bin_x + grid.bin_size) - std::max(x0, bin_x);
       const auto overlap = scale * overlap_w * overlap_h;
       auto &bin = grid.bins[static_cast<std::size_t>(row * grid.columns + col)];
@@ -242,6 +242,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
   auto min_y = std::numeric_limits<double>::infinity();
   auto max_x = -std::numeric_limits<double>::infinity();
   auto max_y = -std::numeric_limits<double>::infinity();
+
   for (const auto &row : rows) {
     for (const auto &subrow : row.subrows) {
       const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
@@ -252,6 +253,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
       max_y = std::max(max_y, rect.top());
     }
   }
+
   if (!std::isfinite(min_x) || max_x <= min_x || max_y <= min_y)
     throw Error("cannot calculate pin density without a non-empty placement region");
 
@@ -285,6 +287,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
     const auto row = point.y == max_y ? row_count - 1 : static_cast<std::uint64_t>((point.y - min_y) / bin_size);
     ++grid.bins[static_cast<std::size_t>(row * columns + column)].pin_count;
   }
+
   return grid;
 }
 

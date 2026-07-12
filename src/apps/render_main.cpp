@@ -20,7 +20,7 @@ void usage(std::ostream &output) {
 
 int main(int argc, char **argv) {
   try {
-    std::string serialization = "binary";
+    std::string serialization_format = "binary";
     std::string output_format = "svg";
     std::optional<double> bin_size;
     int arg = 1;
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
         throw placement::Error(std::string(option) + " requires a value");
 
       if (option == "--serialization-format") {
-        serialization = argv[arg++];
+        serialization_format = argv[arg++];
       } else if (option == "--output-format") {
         output_format = argv[arg++];
       } else if (option == "--bin-size") {
@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 
     const std::filesystem::path input(argv[arg]);
     const std::filesystem::path output(argv[arg + 1]);
-    auto serializer = placement::make_serializer(serialization);
+    auto serializer = placement::make_serializer(serialization_format);
     auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size});
     const auto board = serializer->read(input);
     renderer->render(board, output);

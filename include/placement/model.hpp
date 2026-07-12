@@ -74,10 +74,10 @@ struct UtilizationBin {
 };
 
 struct UtilizationGrid {
-  double minimum_x{};
-  double minimum_y{};
-  double maximum_x{};
-  double maximum_y{};
+  double min_x{};
+  double min_y{};
+  double max_x{};
+  double max_y{};
   double bin_size{};
   std::uint64_t columns{};
   std::uint64_t rows{};
@@ -95,10 +95,10 @@ struct PinDensityBin {
 };
 
 struct PinDensityGrid {
-  double minimum_x{};
-  double minimum_y{};
-  double maximum_x{};
-  double maximum_y{};
+  double min_x{};
+  double min_y{};
+  double max_x{};
+  double max_y{};
   double bin_size{};
   std::uint64_t columns{};
   std::uint64_t rows{};

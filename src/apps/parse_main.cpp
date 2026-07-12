@@ -20,7 +20,7 @@ void usage(std::ostream &output) {
 int main(int argc, char **argv) {
   try {
     std::string input_format = "bookshelf";
-    std::string serialization = "binary";
+    std::string serialization_format = "binary";
     int arg = 1;
 
     while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
       if (option == "--input-format") {
         input_format = argv[arg++];
       } else if (option == "--serialization-format") {
-        serialization = argv[arg++];
+        serialization_format = argv[arg++];
       } else {
         throw placement::Error("unknown option '" + std::string(option) + "'");
       }
@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     const std::filesystem::path input(argv[arg]);
     const std::filesystem::path output(argv[arg + 1]);
     auto parser = placement::make_parser(input_format);
-    auto serializer = placement::make_serializer(serialization);
+    auto serializer = placement::make_serializer(serialization_format);
     auto board = parser->parse(input);
     serializer->write(board, output);
     std::cout << board.name << ": " << board.cells.size() << " cells, " << board.nets.size() << " nets, " << board.pins.size() << " pins, "
