@@ -1,9 +1,11 @@
-#include "placement/binary.hpp"
+#include "placement/serialization/serializer.hpp"
 
 #include "placement/error.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <concepts>
 #include <cstdint>
@@ -23,15 +25,35 @@ constexpr std::uint64_t MAX_RECORDS = 1'000'000'000;
 constexpr std::uint32_t MAX_STRING = 64 * 1024 * 1024;
 constexpr std::uint32_t MAX_WEIGHTS = 1'000'000;
 
+class BinarySerializer final : public Serializer {
+public:
+  void write(const Board &board, const std::filesystem::path &output) const override;
+  [[nodiscard]] Board read(const std::filesystem::path &input) const override;
+};
+
+[[nodiscard]] std::string lower(std::string_view value) {
+  std::string result(value);
+  std::ranges::transform(result, result.begin(), [](unsigned char character) {
+    return static_cast<char>(std::tolower(character));
+  });
+  return result;
+}
+
+// These small wrappers keep byte order and bounds checks in one place. The
+// format is explicitly little-endian, independent of the host architecture.
 class Output {
 public:
   explicit Output(const std::filesystem::path &path) : stream_(path, std::ios::binary) {
-    if (!stream_) throw Error("cannot create " + path.string());
+    if (!stream_) {
+      throw Error("cannot create " + path.string());
+    }
   }
 
   void bytes(const void *data, std::size_t size) {
     stream_.write(static_cast<const char *>(data), static_cast<std::streamsize>(size));
-    if (!stream_) throw Error("failed while writing binary placement");
+    if (!stream_) {
+      throw Error("failed while writing binary placement");
+    }
   }
 
   template <std::unsigned_integral T> void integer(T value) {
@@ -44,20 +66,27 @@ public:
   void real(double value) { integer(std::bit_cast<std::uint64_t>(value)); }
 
   void string(std::string_view value) {
-    if (value.size() > MAX_STRING) throw Error("string exceeds binary format limit");
+    if (value.size() > MAX_STRING) {
+      throw Error("string exceeds binary format limit");
+    }
     integer(static_cast<std::uint32_t>(value.size()));
     bytes(value.data(), value.size());
   }
 
   void weights(const std::vector<double> &values) {
-    if (values.size() > MAX_WEIGHTS) throw Error("weight vector exceeds binary format limit");
+    if (values.size() > MAX_WEIGHTS) {
+      throw Error("weight vector exceeds binary format limit");
+    }
     integer(static_cast<std::uint32_t>(values.size()));
-    for (const auto value : values) real(value);
+    for (const auto value : values) {
+      real(value);
+    }
   }
 
   void finish() {
     stream_.flush();
-    if (!stream_) throw Error("failed while finalizing binary placement");
+    if (!stream_)
+      throw Error("failed while finalizing binary placement");
   }
 
 private:
@@ -67,7 +96,9 @@ private:
 class Input {
 public:
   explicit Input(const std::filesystem::path &path) : path_(path), stream_(path, std::ios::binary) {
-    if (!stream_) throw Error("cannot open " + path.string());
+    if (!stream_) {
+      throw Error("cannot open " + path.string());
+    }
   }
 
   void bytes(void *data, std::size_t size) {
@@ -89,7 +120,9 @@ public:
 
   [[nodiscard]] std::string string() {
     const auto size = integer<std::uint32_t>();
-    if (size > MAX_STRING) throw Error(path_.string() + ": invalid string length");
+    if (size > MAX_STRING) {
+      throw Error(path_.string() + ": invalid string length");
+    }
     std::string value(size, '\0');
     bytes(value.data(), value.size());
     return value;
@@ -97,15 +130,19 @@ public:
 
   [[nodiscard]] std::vector<double> weights() {
     const auto size = integer<std::uint32_t>();
-    if (size > MAX_WEIGHTS) throw Error(path_.string() + ": invalid weight count");
+    if (size > MAX_WEIGHTS) {
+      throw Error(path_.string() + ": invalid weight count");
+    }
     std::vector<double> values;
     values.reserve(size);
-    for (std::uint32_t index = 0; index < size; ++index) values.push_back(real());
+    for (std::uint32_t index = 0; index < size; ++index) {
+      values.push_back(real());
+    }
     return values;
   }
 
-  template <typename Enum> [[nodiscard]] Enum enumeration(std::uint8_t maximum,
-                                                           std::string_view name) {
+  template <typename Enum>
+  [[nodiscard]] Enum enumeration(std::uint8_t maximum, std::string_view name) {
     const auto value = integer<std::uint8_t>();
     if (value > maximum)
       throw Error(path_.string() + ": invalid " + std::string(name));
@@ -114,8 +151,12 @@ public:
 
   void require_end() {
     char byte{};
-    if (stream_.read(&byte, 1)) throw Error(path_.string() + ": trailing binary data");
-    if (!stream_.eof()) throw Error(path_.string() + ": failed while reading binary placement");
+    if (stream_.read(&byte, 1)) {
+      throw Error(path_.string() + ": trailing binary data");
+    }
+    if (!stream_.eof()) {
+      throw Error(path_.string() + ": failed while reading binary placement");
+    }
   }
 
   [[nodiscard]] const std::filesystem::path &path() const { return path_; }
@@ -132,8 +173,12 @@ private:
 
 template <typename Function>
 void atomic_output(const std::filesystem::path &output, Function &&function) {
-  if (!output.parent_path().empty())
+  if (!output.parent_path().empty()) {
     std::filesystem::create_directories(output.parent_path());
+  }
+
+  // Never expose a partially written placement. The fallback removal handles
+  // platforms whose rename operation cannot replace an existing file.
   const auto temporary = temporary_path(output);
   try {
     function(temporary);
@@ -144,7 +189,9 @@ void atomic_output(const std::filesystem::path &output, Function &&function) {
       error.clear();
       std::filesystem::rename(temporary, output, error);
     }
-    if (error) throw Error("cannot replace " + output.string() + ": " + error.message());
+    if (error) {
+      throw Error("cannot replace " + output.string() + ": " + error.message());
+    }
   } catch (...) {
     std::error_code ignored;
     std::filesystem::remove(temporary, ignored);
@@ -159,9 +206,12 @@ void check_count(std::uint64_t count, const Input &input, std::string_view name)
 
 } // namespace
 
-void BinaryBoard::write(const Board &board, const std::filesystem::path &output) {
+void BinarySerializer::write(const Board &board, const std::filesystem::path &output) const {
   atomic_output(output, [&](const auto &temporary) {
     Output writer(temporary);
+
+    // The fixed-size header leaves flags available for future compatible
+    // additions while major versions continue to identify incompatible data.
     writer.bytes(MAGIC.data(), MAGIC.size());
     writer.integer(MAJOR_VERSION);
     writer.integer(MINOR_VERSION);
@@ -213,6 +263,7 @@ void BinaryBoard::write(const Board &board, const std::filesystem::path &output)
       writer.integer(net.pin_count);
       writer.weights(net.weights);
     }
+
     for (const auto &pin : board.pins) {
       writer.integer(pin.cell);
       writer.integer(static_cast<std::uint8_t>(pin.direction));
@@ -223,15 +274,21 @@ void BinaryBoard::write(const Board &board, const std::filesystem::path &output)
   });
 }
 
-Board BinaryBoard::read(const std::filesystem::path &input) {
+Board BinarySerializer::read(const std::filesystem::path &input) const {
   Input reader(input);
   std::array<char, MAGIC.size()> magic{};
   reader.bytes(magic.data(), magic.size());
-  if (magic != MAGIC) throw Error(input.string() + ": invalid binary magic");
+  if (magic != MAGIC)
+    throw Error(input.string() + ": invalid binary magic");
   const auto major = reader.integer<std::uint16_t>();
   const auto minor = reader.integer<std::uint16_t>();
+
+  // Newer minor versions remain readable as long as they only use fields and
+  // flags understood by this reader.
   (void)minor;
-  if (major != MAJOR_VERSION) throw Error(input.string() + ": unsupported binary major version");
+  if (major != MAJOR_VERSION) {
+    throw Error(input.string() + ": unsupported binary major version");
+  }
   if (reader.integer<std::uint32_t>() != 0)
     throw Error(input.string() + ": unsupported binary flags");
 
@@ -257,7 +314,9 @@ Board BinaryBoard::read(const std::filesystem::path &input) {
     cell.height = reader.real();
     cell.kind = reader.enumeration<CellKind>(2, "cell kind");
     const auto has_location = reader.integer<std::uint8_t>();
-    if (has_location > 1) throw Error(input.string() + ": invalid placement presence flag");
+    if (has_location > 1) {
+      throw Error(input.string() + ": invalid placement presence flag");
+    }
     if (has_location) {
       Location location;
       location.x = reader.real();
@@ -265,7 +324,9 @@ Board BinaryBoard::read(const std::filesystem::path &input) {
       location.orientation = reader.enumeration<Orientation>(7, "orientation");
       location.status = reader.enumeration<PlacementStatus>(2, "placement status");
       const auto has_dimensions = reader.integer<std::uint8_t>();
-      if (has_dimensions > 1) throw Error(input.string() + ": invalid dimensions presence flag");
+      if (has_dimensions > 1) {
+        throw Error(input.string() + ": invalid dimensions presence flag");
+      }
       if (has_dimensions) {
         location.width = reader.real();
         location.height = reader.real();
@@ -284,7 +345,9 @@ Board BinaryBoard::read(const std::filesystem::path &input) {
     row.site_spacing = reader.real();
     row.site_orientation = reader.enumeration<Orientation>(7, "row orientation");
     row.symmetry = reader.integer<std::uint8_t>();
-    if (row.symmetry > 7) throw Error(input.string() + ": invalid row symmetry");
+    if (row.symmetry > 7) {
+      throw Error(input.string() + ": invalid row symmetry");
+    }
     const auto subrow_count = reader.integer<std::uint64_t>();
     check_count(subrow_count, reader, "subrow");
     row.subrows.reserve(static_cast<std::size_t>(subrow_count));
@@ -303,17 +366,28 @@ Board BinaryBoard::read(const std::filesystem::path &input) {
     net.weights = reader.weights();
     board.nets.push_back(std::move(net));
   }
+
   for (std::uint64_t index = 0; index < pin_count; ++index) {
     Pin pin;
     pin.cell = reader.integer<std::uint32_t>();
-    if (pin.cell >= cell_count) throw Error(input.string() + ": pin cell index is out of bounds");
+    if (pin.cell >= cell_count) {
+      throw Error(input.string() + ": pin cell index is out of bounds");
+    }
     pin.direction = reader.enumeration<PinDirection>(3, "pin direction");
     pin.offset_x = reader.real();
     pin.offset_y = reader.real();
     board.pins.push_back(pin);
   }
+
   reader.require_end();
   return board;
+}
+
+std::unique_ptr<Serializer> make_serializer(std::string_view format) {
+  if (lower(format) == "binary") {
+    return std::make_unique<BinarySerializer>();
+  }
+  throw Error("unsupported serialization format '" + std::string(format) + "'");
 }
 
 } // namespace placement

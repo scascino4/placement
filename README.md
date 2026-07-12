@@ -8,8 +8,10 @@ It uses C++23 and the standard library only.
 
 ```sh
 make
-build/bin/placement_parse [--input-format bookshelf] input.dp.aux output.placebin
-build/bin/placement_render [--output-format svg] output.placebin output.svg
+build/bin/placement_parse [--input-format bookshelf] \
+  [--serialization-format binary] input.dp.aux output.placebin
+build/bin/placement_render [--serialization-format binary] \
+  [--output-format svg] output.placebin output.svg
 make test
 make outputs
 ```
@@ -24,9 +26,21 @@ make outputs
 `placement::Board` is independent of any input or output syntax. It stores
 cells and placements, rows and subrows, nets and flattened pins, directions,
 offsets, orientations, fixed status, and weights. `Parser` and `Renderer` are
-backend interfaces selected through factories. The current implementations are
-Bookshelf input and SVG output; LEF/DEF parsing or another renderer can be
-added without changing the applications or binary codec.
+backend interfaces selected through factories. `Serializer` independently
+maps a `Board` to and from a persistent representation. The current backends
+are Bookshelf input, binary serialization, and SVG output. Each application
+links only the backends it uses, and components communicate exclusively through
+`Board`.
+
+The source tree follows those architectural boundaries:
+
+- `include/placement/parsing` and `src/parsing` contain parser interfaces and
+  input-format backends.
+- `include/placement/rendering` and `src/rendering` contain renderer interfaces
+  and output-format backends.
+- `include/placement/serialization` defines the format-neutral serialization
+  interface, while `src/serialization` contains persistence backends.
+- `src/apps` contains the thin command-line entry points.
 
 The Bookshelf reader consumes `.aux`, `.nodes`, `.nets`, optional `.wts`,
 `.scl`, and `.pl` components. It supports terminal variants, the eight spatial

@@ -8,11 +8,22 @@ BUILD_DIR := build
 OBJ_DIR := $(BUILD_DIR)/obj
 BIN_DIR := $(BUILD_DIR)/bin
 
-CORE_SOURCES := src/bookshelf_parser.cpp src/binary.cpp src/svg_writer.cpp
-CORE_OBJECTS := $(CORE_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
-PARSE_OBJECT := $(OBJ_DIR)/parse_main.o
-RENDER_OBJECT := $(OBJ_DIR)/render_main.o
+PARSING_SOURCES := src/parsing/bookshelf.cpp
+RENDERING_SOURCES := src/rendering/svg.cpp
+SERIALIZATION_SOURCES := src/serialization/binary.cpp
+
+PARSING_OBJECTS := $(PARSING_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
+RENDERING_OBJECTS := $(RENDERING_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
+SERIALIZATION_OBJECTS := $(SERIALIZATION_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
+PARSE_OBJECT := $(OBJ_DIR)/apps/parse_main.o
+RENDER_OBJECT := $(OBJ_DIR)/apps/render_main.o
 TEST_OBJECT := $(OBJ_DIR)/test_main.o
+
+FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
+	include/placement/*/*.hpp \
+	src/*.cpp \
+	src/*/*.cpp \
+	test/*.cpp)
 
 PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
@@ -22,13 +33,14 @@ TEST_BIN := $(BIN_DIR)/placement_tests
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
-$(PARSE_BIN): $(CORE_OBJECTS) $(PARSE_OBJECT) | $(BIN_DIR)
+$(PARSE_BIN): $(PARSING_OBJECTS) $(SERIALIZATION_OBJECTS) $(PARSE_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(RENDER_BIN): $(CORE_OBJECTS) $(RENDER_OBJECT) | $(BIN_DIR)
+$(RENDER_BIN): $(RENDERING_OBJECTS) $(SERIALIZATION_OBJECTS) $(RENDER_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-$(TEST_BIN): $(CORE_OBJECTS) $(TEST_OBJECT) | $(BIN_DIR)
+$(TEST_BIN): $(PARSING_OBJECTS) $(RENDERING_OBJECTS) \
+		$(SERIALIZATION_OBJECTS) $(TEST_OBJECT) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(OBJ_DIR)/%.o: src/%.cpp
@@ -57,7 +69,7 @@ outputs: all
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \
 		echo "$(CLANG_FORMAT) is not installed" >&2; exit 1; }
-	$(CLANG_FORMAT) -i include/placement/*.hpp src/*.cpp test/*.cpp
+	$(CLANG_FORMAT) -i $(FORMAT_SOURCES)
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -65,5 +77,6 @@ clean:
 clean-outputs:
 	rm -rf out
 
--include $(CORE_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) $(RENDER_OBJECT:.o=.d) \
-	$(TEST_OBJECT:.o=.d)
+-include $(PARSING_OBJECTS:.o=.d) $(RENDERING_OBJECTS:.o=.d) \
+	$(SERIALIZATION_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
+	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECT:.o=.d)

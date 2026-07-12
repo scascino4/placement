@@ -24,9 +24,12 @@ previews for clipping, inversion, or implausible geometry.
 ## Code organization and conventions
 
 - `include/placement/model.hpp` defines the format-neutral `placement::Board`.
-- `Parser` and `Renderer` are extension interfaces selected through factories.
-- `src/bookshelf_parser.cpp`, `src/binary.cpp`, and `src/svg_writer.cpp` contain
-  the current backends; the two `*_main.cpp` files should remain thin CLIs.
+- `Parser`, `Renderer`, and `Serializer` are independent extension interfaces
+  selected through factories and connected only through `placement::Board`.
+- `src/parsing`, `src/rendering`, and `src/serialization` contain the current
+  backends; their public interfaces mirror this structure under
+  `include/placement`.
+- `src/apps` contains the two `*_main.cpp` files, which should remain thin CLIs.
 - Tests and synthetic Bookshelf fixtures are in `test/test_main.cpp`.
 - Keep production code and tests limited to the C++23 standard library.
 - Follow `.clang-format`, retain path-and-line parser diagnostics, validate all

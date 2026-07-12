@@ -11,8 +11,7 @@ namespace placement {
 class Renderer {
 public:
   virtual ~Renderer() = default;
-  virtual void render(const Board &board,
-                      const std::filesystem::path &output) const = 0;
+  virtual void render(const Board &board, const std::filesystem::path &output) const = 0;
 };
 
 [[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format);

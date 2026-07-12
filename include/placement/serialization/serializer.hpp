@@ -3,13 +3,19 @@
 #include "placement/model.hpp"
 
 #include <filesystem>
+#include <memory>
+#include <string_view>
 
 namespace placement {
 
-class BinaryBoard {
+class Serializer {
 public:
-  static void write(const Board &board, const std::filesystem::path &output);
-  [[nodiscard]] static Board read(const std::filesystem::path &input);
+  virtual ~Serializer() = default;
+
+  virtual void write(const Board &board, const std::filesystem::path &output) const = 0;
+  [[nodiscard]] virtual Board read(const std::filesystem::path &input) const = 0;
 };
+
+[[nodiscard]] std::unique_ptr<Serializer> make_serializer(std::string_view format);
 
 } // namespace placement

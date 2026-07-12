@@ -17,6 +17,9 @@ struct Location {
   double y{};
   Orientation orientation{Orientation::N};
   PlacementStatus status{PlacementStatus::Movable};
+
+  // Some Bookshelf placements override the dimensions declared by the cell.
+  // Keeping that detail on the placement preserves the format-neutral cell.
   std::optional<double> width;
   std::optional<double> height;
 };
@@ -54,6 +57,9 @@ struct Pin {
 
 struct Net {
   std::string name;
+
+  // Nets reference contiguous ranges in Board::pins. Flattening connectivity
+  // avoids a vector allocation per net on very large designs.
   std::uint64_t first_pin{};
   std::uint64_t pin_count{};
   std::vector<double> weights;
