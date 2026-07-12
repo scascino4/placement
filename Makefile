@@ -34,8 +34,11 @@ TEST_BIN := $(BIN_DIR)/placement_tests
 OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
 OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(OUTPUT_AUX_FILES))))
 OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
+DREAMPLACE_PL_FILES := $(wildcard data/dreamplace-placements/*.gp.pl)
+DREAMPLACE_DESIGNS := $(basename $(basename $(notdir $(DREAMPLACE_PL_FILES))))
+DREAMPLACE_OUTPUT_TARGETS := $(addprefix dreamplace-output-,$(DREAMPLACE_DESIGNS))
 
-.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) clean clean-outputs format
+.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -68,7 +71,7 @@ valgrind:
 		VALGRIND_CXXFLAGS="$(VALGRIND_CXXFLAGS)" \
 		VALGRIND_FLAGS="$(VALGRIND_FLAGS)" ./test/valgrind_smoke.sh
 
-outputs: all $(OUTPUT_TARGETS)
+outputs: all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS)
 
 $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
@@ -78,6 +81,17 @@ $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 		"out/ispd2005/$*/utilization.svg"
 	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005/$*/placement.placebin" \
 		"out/ispd2005/$*/pin-density.svg"
+
+$(DREAMPLACE_OUTPUT_TARGETS): dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
+	@mkdir -p "out/ispd2005/dreamplace-$*"
+	$(PARSE_BIN) --placement-file "data/dreamplace-placements/$*.gp.pl" \
+		"data/ispd2005/$*/$*.dp.aux" "out/ispd2005/dreamplace-$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2005/dreamplace-$*/placement.placebin" \
+		"out/ispd2005/dreamplace-$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005/dreamplace-$*/placement.placebin" \
+		"out/ispd2005/dreamplace-$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005/dreamplace-$*/placement.placebin" \
+		"out/ispd2005/dreamplace-$*/pin-density.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \

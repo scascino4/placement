@@ -573,8 +573,12 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
 
 class BookshelfParser final : public Parser {
 public:
+  explicit BookshelfParser(ParseOptions options) : options_(std::move(options)) {}
+
   [[nodiscard]] Board parse(const std::filesystem::path &input) const override {
-    const auto components = parse_aux(input);
+    auto components = parse_aux(input);
+    if (options_.placement_override)
+      components.placement = *options_.placement_override;
 
     Board board;
     board.name = input.stem().stem().string();
@@ -597,13 +601,16 @@ public:
     parse_placement(components.placement, board, cell_index);
     return board;
   }
+
+private:
+  ParseOptions options_;
 };
 
 } // namespace
 
-std::unique_ptr<Parser> make_parser(std::string_view format) {
+std::unique_ptr<Parser> make_parser(std::string_view format, ParseOptions options) {
   if (lower(format) == "bookshelf")
-    return std::make_unique<BookshelfParser>();
+    return std::make_unique<BookshelfParser>(std::move(options));
   throw Error("unsupported input format '" + std::string(format) + "'");
 }
 

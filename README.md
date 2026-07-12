@@ -9,6 +9,7 @@ It uses C++23 and the standard library only.
 ```sh
 make
 build/bin/placement_parse [--input-format bookshelf] \
+  [--placement-file placement.pl] \
   [--serialization-format binary] input.dp.aux output.placebin
 build/bin/placement_render [--serialization-format binary] \
   [--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] [--dark-mode] output.placebin output.svg
@@ -20,8 +21,11 @@ make -j 4 outputs
 ```
 
 `make outputs` parses the legalized `*.dp.aux` manifest in each
-`data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`, and
-`utilization.svg` and `pin-density.svg` under `out/ispd2005/<design>`. It uses one job by default;
+`data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`,
+`utilization.svg`, and `pin-density.svg` under `out/ispd2005/<design>`. When a
+matching `data/dreamplace-placements/<design>.gp.pl` exists, it creates the same
+four files under `out/ispd2005/dreamplace-<design>` using that placement instead.
+It uses one job by default;
 pass `-j N` to process up to `N` benchmarks concurrently. Parsing and rendering
 remain ordered within each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
@@ -60,6 +64,8 @@ The Bookshelf reader consumes `.aux`, `.nodes`, `.nets`, optional `.wts`,
 `.scl`, and `.pl` components. It supports terminal variants, the eight spatial
 orientations, fixed variants, multiple subrows, optional placement dimensions,
 and I/O/bidirectional pins. Diagnostics identify the component and source line.
+Pass `--placement-file` to replace the `.pl` named by the AUX manifest while
+retaining all of its other components.
 
 ## Binary format version 1.0
 

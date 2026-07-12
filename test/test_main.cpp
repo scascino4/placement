@@ -120,6 +120,28 @@ void malformed_parser_test() {
   expect_error([&] { (void)parse_fixture(temporary.path()); }, "pin references unknown cell");
 }
 
+void placement_override_test() {
+  TemporaryDirectory temporary;
+  fixture(temporary.path());
+  const auto override = temporary.path() / "dreamplace.pl";
+  write(override, "UCLA pl 1.0\n"
+                  "a 101 202 : S\n"
+                  "b 303 404 : N /FIXED\n");
+
+  // A malformed manifest placement proves that the override is selected as
+  // the placement source instead of being layered on top of it.
+  write(temporary.path() / "tiny.pl", "this file must not be parsed\n");
+  auto parser = placement::make_parser("bookshelf", {.placement_override = override});
+  const auto board = parser->parse(temporary.path() / "tiny.aux");
+  check(board.cells[0].location->x == 101 && board.cells[0].location->y == 202, "placement override coordinates");
+  check(board.cells[0].location->orientation == placement::Orientation::S, "placement override orientation");
+  check(board.cells[1].location->status == placement::PlacementStatus::Fixed, "placement override fixed status");
+  check(!board.cells[2].location && !board.cells[3].location, "placement override may leave cells unplaced");
+
+  write(override, "UCLA pl 1.0\nunknown 1 2 : N\n");
+  expect_error([&] { (void)parser->parse(temporary.path() / "tiny.aux"); }, override.string() + ":2: placement references unknown cell");
+}
+
 void binary_test() {
   TemporaryDirectory temporary;
   fixture(temporary.path());
@@ -336,8 +358,13 @@ void svg_test() {
 
 int main() {
   const std::vector<std::pair<std::string_view, std::function<void()>>> tests{
-      {"Bookshelf parser", parser_test},      {"parser diagnostics", malformed_parser_test}, {"binary round trip and corruption", binary_test},
-      {"utilization grid", utilization_test}, {"pin density grid", pin_density_test},        {"SVG renderer", svg_test},
+      {"Bookshelf parser", parser_test},
+      {"parser diagnostics", malformed_parser_test},
+      {"binary round trip and corruption", binary_test},
+      {"placement override", placement_override_test},
+      {"utilization grid", utilization_test},
+      {"pin density grid", pin_density_test},
+      {"SVG renderer", svg_test},
   };
   std::size_t passed = 0;
   for (const auto &[name, test] : tests) {

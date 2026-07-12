@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 namespace placement {
@@ -14,6 +15,10 @@ public:
   [[nodiscard]] virtual Board parse(const std::filesystem::path &input) const = 0;
 };
 
-[[nodiscard]] std::unique_ptr<Parser> make_parser(std::string_view format);
+struct ParseOptions {
+  std::optional<std::filesystem::path> placement_override;
+};
+
+[[nodiscard]] std::unique_ptr<Parser> make_parser(std::string_view format, ParseOptions options = {});
 
 } // namespace placement
