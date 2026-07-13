@@ -195,36 +195,43 @@ UtilizationGrid Board::utilization(double bin_size) const {
   for (const auto &row : rows)
     max_row_height = std::max(max_row_height, row.height);
 
+  const auto subtract_row_overlap = [&](const Rectangle &rect) {
+    // Only rows that can intersect the blockage need to be examined.
+    const auto first = std::ranges::lower_bound(row_order, rect.y - max_row_height, {}, [this](std::size_t index) { return rows[index].coordinate; });
+
+    for (auto it = first; it != row_order.end(); ++it) {
+      const auto &row = rows[*it];
+      if (row.coordinate >= rect.top())
+        break;
+
+      const auto y0 = std::max(row.coordinate, rect.y);
+      const auto y1 = std::min(row.coordinate + row.height, rect.top());
+      if (y0 >= y1)
+        continue;
+
+      for (const auto &subrow : row.subrows) {
+        const auto subrow_right = subrow.origin + static_cast<double>(subrow.site_count) * row.site_spacing;
+        const auto x0 = std::max(subrow.origin, rect.x);
+        const auto x1 = std::min(subrow_right, rect.right());
+
+        if (x0 < x1)
+          add_overlap(grid, {x0, y0, x1 - x0, y1 - y0}, Area::Placeable, -1.0);
+      }
+    }
+  };
+
   for (const auto &cell : cells) {
     if (!cell.location)
       continue;
     const auto rect = cell_rectangle(cell);
-    if (movable(cell)) {
+    if (cell.macro) {
+      // Macros occupy row area regardless of whether they are movable in the
+      // current placement. Standard-cell utilization excludes their footprint.
+      subtract_row_overlap(rect);
+    } else if (movable(cell)) {
       add_overlap(grid, rect, Area::Movable);
     } else if (fixed(cell)) {
-      // Only rows that can intersect the fixed cell need to be examined.
-      const auto first =
-          std::ranges::lower_bound(row_order, rect.y - max_row_height, {}, [this](std::size_t index) { return rows[index].coordinate; });
-
-      for (auto it = first; it != row_order.end(); ++it) {
-        const auto &row = rows[*it];
-        if (row.coordinate >= rect.top())
-          break;
-
-        const auto y0 = std::max(row.coordinate, rect.y);
-        const auto y1 = std::min(row.coordinate + row.height, rect.top());
-        if (y0 >= y1)
-          continue;
-
-        for (const auto &subrow : row.subrows) {
-          const auto subrow_right = subrow.origin + static_cast<double>(subrow.site_count) * row.site_spacing;
-          const auto x0 = std::max(subrow.origin, rect.x);
-          const auto x1 = std::min(subrow_right, rect.right());
-
-          if (x0 < x1)
-            add_overlap(grid, {x0, y0, x1 - x0, y1 - y0}, Area::Placeable, -1.0);
-        }
-      }
+      subtract_row_overlap(rect);
     }
   }
 

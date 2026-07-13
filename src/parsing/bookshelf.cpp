@@ -251,9 +251,13 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
 
     if (fields.size() >= 4) {
       const auto kind = lower(fields[3]);
-      if (kind == "terminal")
+      if (kind == "terminal") {
         cell.kind = CellKind::Terminal;
-      else if (kind == "terminal_ni")
+        // Row-based Bookshelf benchmarks use terminal nodes for physical
+        // macros. Keep that physical identity even when a placement override
+        // makes those macros movable.
+        cell.macro = true;
+      } else if (kind == "terminal_ni")
         cell.kind = CellKind::TerminalNonInteracting;
       else
         lines.fail("unknown node kind '" + std::string(fields[3]) + "'");

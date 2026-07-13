@@ -99,7 +99,9 @@ void parser_test() {
   check(board.cells.size() == 4 && board.rows.size() == 1, "cell and row counts");
   check(board.nets.size() == 2 && board.pins.size() == 4, "net and pin counts");
   check(board.cells[1].kind == placement::CellKind::Terminal, "terminal kind");
+  check(board.cells[1].macro, "terminal macro identity");
   check(board.cells[2].kind == placement::CellKind::TerminalNonInteracting, "terminal_NI kind");
+  check(!board.cells[2].macro, "non-interacting terminal is not a macro");
   check(!board.cells[3].location, "undefined placement");
   check(board.cells[0].location->orientation == placement::Orientation::E, "orientation");
   check(board.cells[1].location->status == placement::PlacementStatus::Fixed, "fixed status");
@@ -126,7 +128,7 @@ void placement_override_test() {
   const auto override = temporary.path() / "dreamplace.pl";
   write(override, "UCLA pl 1.0\n"
                   "a 101 202 : S\n"
-                  "b 303 404 : N /FIXED\n");
+                  "b 303 404 : N\n");
 
   // A malformed manifest placement proves that the override is selected as
   // the placement source instead of being layered on top of it.
@@ -135,7 +137,8 @@ void placement_override_test() {
   const auto board = parser->parse(temporary.path() / "tiny.aux");
   check(board.cells[0].location->x == 101 && board.cells[0].location->y == 202, "placement override coordinates");
   check(board.cells[0].location->orientation == placement::Orientation::S, "placement override orientation");
-  check(board.cells[1].location->status == placement::PlacementStatus::Fixed, "placement override fixed status");
+  check(board.cells[1].location->status == placement::PlacementStatus::Movable && board.cells[1].macro,
+        "placement override preserves movable macro identity");
   check(!board.cells[2].location && !board.cells[3].location, "placement override may leave cells unplaced");
 
   write(override, "UCLA pl 1.0\nunknown 1 2 : N\n");
@@ -155,6 +158,7 @@ void binary_test() {
   check(read(first) == read(second), "binary output must be deterministic");
   const auto decoded = serializer->read(first);
   check(decoded.name == board.name && decoded.cells.size() == board.cells.size(), "binary board identity");
+  check(decoded.cells[1].macro && !decoded.cells[2].macro, "binary macro identity");
   check(decoded.cells[2].location->orientation == placement::Orientation::FW, "binary orientation");
   check(decoded.pins[0].offset_x == -0.5 && decoded.nets[0].pin_count == 3, "binary connectivity");
 
@@ -162,12 +166,6 @@ void binary_test() {
   bytes[0] = 'X';
   write(temporary.path() / "bad-magic.placebin", bytes);
   expect_error([&] { (void)serializer->read(temporary.path() / "bad-magic.placebin"); }, "invalid binary magic");
-
-  bytes = read(first);
-  bytes[8] = 2;
-  bytes[9] = 0;
-  write(temporary.path() / "bad-version.placebin", bytes);
-  expect_error([&] { (void)serializer->read(temporary.path() / "bad-version.placebin"); }, "unsupported binary major version");
 
   bytes = read(first);
   bytes.resize(bytes.size() - 3);
@@ -180,8 +178,8 @@ void binary_test() {
   expect_error([&] { (void)serializer->read(temporary.path() / "trailing.placebin"); }, "trailing binary data");
 
   bytes = read(first);
-  // Header (16), name length (4), and "tiny" (4) precede the cell count.
-  for (std::size_t index = 24; index < 32; ++index)
+  // Magic (8), name length (4), and "tiny" (4) precede the cell count.
+  for (std::size_t index = 16; index < 24; ++index)
     bytes[index] = '\xFF';
   write(temporary.path() / "bad-count.placebin", bytes);
   expect_error([&] { (void)serializer->read(temporary.path() / "bad-count.placebin"); }, "invalid cell count");
@@ -212,14 +210,14 @@ void utilization_test() {
   movable.location->x = 5;
   board.cells.push_back(movable);
 
-  placement::Cell fixed;
-  fixed.name = "macro";
-  fixed.width = 2;
-  fixed.height = 10;
-  fixed.kind = placement::CellKind::Terminal;
-  fixed.location.emplace();
-  fixed.location->status = placement::PlacementStatus::Fixed;
-  board.cells.push_back(fixed);
+  placement::Cell macro;
+  macro.name = "macro";
+  macro.width = 2;
+  macro.height = 10;
+  macro.macro = true;
+  macro.location.emplace();
+  macro.location->status = placement::PlacementStatus::Movable;
+  board.cells.push_back(macro);
 
   const auto grid = board.utilization(10);
   check(grid.columns == 2 && grid.rows == 1 && grid.bins.size() == 2, "utilization grid dimensions");
@@ -230,9 +228,9 @@ void utilization_test() {
   placement::Board fragmented;
   row.subrows = {{0, 4}, {6, 4}};
   fragmented.rows.push_back(row);
-  fixed.width = 4;
-  fixed.location->x = 3;
-  fragmented.cells.push_back(fixed);
+  macro.width = 4;
+  macro.location->x = 3;
+  fragmented.cells.push_back(macro);
   const auto fragmented_grid = fragmented.utilization(10);
   check(close(fragmented_grid.at(0, 0).placeable_area, 60), "fixed blockage excludes only its intersection with legal rows");
 
@@ -286,17 +284,18 @@ void svg_test() {
   serializer->write(board, binary);
   board = serializer->read(binary);
   board.name = "tiny <&>";
+  board.cells[1].location->status = placement::PlacementStatus::Movable;
   auto renderer = placement::make_renderer("SVG");
   const auto svg = temporary.path() / "tiny.svg";
   renderer->render(board, svg);
   const auto contents = read(svg);
   check(contents.find("tiny &lt;&amp;&gt; placement") != std::string::npos, "escaped SVG title");
   check(contents.find("translate(") != std::string::npos && contents.find("scale(1 -1)") != std::string::npos, "placement coordinate transform");
-  check(contents.find("class=\"movable\"") != std::string::npos && contents.find("class=\"fixed\"") != std::string::npos &&
+  check(contents.find("class=\"movable\"") != std::string::npos && contents.find("class=\"macro\"") != std::string::npos &&
             contents.find("class=\"fixed-ni\"") != std::string::npos,
         "SVG cell classes");
   check(contents.find(".background{fill:#000000}") != std::string::npos, "light placement SVG background is black");
-  check(contents.find(".fixed{fill:#ffffff;stroke:#ffffff") != std::string::npos, "light placement SVG macros are white");
+  check(contents.find(".macro{fill:#ffffff;stroke:#ffffff") != std::string::npos, "light placement SVG macros are white");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
 
   auto dark_renderer = placement::make_renderer("svg", {.bin_size = std::nullopt, .dark_mode = true});
@@ -304,7 +303,7 @@ void svg_test() {
   dark_renderer->render(board, dark_svg);
   const auto dark_contents = read(dark_svg);
   check(dark_contents.find(".background{fill:#000000}") != std::string::npos && dark_contents.find(".movable{fill:#60a5fa") != std::string::npos &&
-            dark_contents.find(".fixed{fill:#ffffff;stroke:#ffffff") != std::string::npos,
+            dark_contents.find(".macro{fill:#ffffff;stroke:#ffffff") != std::string::npos,
         "dark placement SVG palette");
   check(contents.find("#0f172a") == std::string::npos, "light placement SVG remains the default");
 
@@ -314,9 +313,9 @@ void svg_test() {
   const auto utilization_contents = read(utilization_svg);
   check(utilization_contents.find("tiny &lt;&amp;&gt; utilization") != std::string::npos, "utilization SVG title");
   check(utilization_contents.find(".background{fill:#000000}") != std::string::npos, "utilization SVG background is black");
-  check(utilization_contents.find("class=\"bin\"") != std::string::npos && utilization_contents.find("fixed-overlay") != std::string::npos,
-        "utilization SVG bins and fixed objects");
-  check(utilization_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
+  check(utilization_contents.find("class=\"bin\"") != std::string::npos && utilization_contents.find("macro-overlay") != std::string::npos,
+        "utilization SVG bins and macros");
+  check(utilization_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
             utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "utilization SVG macros mask bin colors");
 
@@ -337,7 +336,7 @@ void svg_test() {
   check(pin_density_contents.find("class=\"bin\"") != std::string::npos && pin_density_contents.find("pins; density") != std::string::npos,
         "pin density SVG bins and tooltips");
   check(pin_density_contents.find(".movable-overlay{fill:#f8fafc;fill-opacity:.42") != std::string::npos &&
-            pin_density_contents.find(".fixed-overlay{fill:#f8fafc") != std::string::npos &&
+            pin_density_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
             pin_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
         "pin density SVG masks macros consistently with utilization");
 

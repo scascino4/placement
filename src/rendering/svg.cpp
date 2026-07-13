@@ -95,9 +95,11 @@ struct Bounds {
   [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
 };
 
-enum class CellClass { Movable, Fixed, FixedNonInteracting };
+enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
+  if (cell.macro)
+    return CellClass::Macro;
   if (cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
     return CellClass::FixedNonInteracting;
   if (cell.kind == CellKind::Terminal || cell.location->status == PlacementStatus::Fixed)
@@ -207,12 +209,14 @@ public:
       output << "  <style>\n";
       if (options_.dark_mode)
         output << "    .background{fill:#000000}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
-               << "}.movable{fill:#60a5fa;stroke:none}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
-               << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke << "}\n";
+               << "}.movable{fill:#60a5fa;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
+               << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke
+               << "}\n";
       else
         output << "    .background{fill:#000000}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-               << "}.movable{fill:#3b82f6;stroke:none}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
-               << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke << "}\n";
+               << "}.movable{fill:#3b82f6;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
+               << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke
+               << "}\n";
       output << "  </style>\n";
 
       output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
@@ -231,6 +235,7 @@ public:
       }
 
       write_paths(output, board, CellClass::Movable, "movable");
+      write_paths(output, board, CellClass::Macro, "macro");
       write_paths(output, board, CellClass::Fixed, "fixed");
       write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni");
 
@@ -288,6 +293,7 @@ public:
              << "  <style>\n"
              << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
              << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
+             << ".macro-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}"
              << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
              << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
              << "  </style>\n"
@@ -308,6 +314,7 @@ public:
       }
 
       write_paths(output, board, CellClass::Movable, "movable-overlay");
+      write_paths(output, board, CellClass::Macro, "macro-overlay");
       write_paths(output, board, CellClass::Fixed, "fixed-overlay");
       write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
       output << "  </g>\n</svg>\n";
@@ -369,6 +376,7 @@ public:
              << "  <style>\n"
              << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
              << "}.movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}"
+             << ".macro-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}"
              << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface
              << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << stroke << "}\n"
              << "  </style>\n"
@@ -390,6 +398,7 @@ public:
         }
       }
       write_paths(output, board, CellClass::Movable, "movable-overlay");
+      write_paths(output, board, CellClass::Macro, "macro-overlay");
       write_paths(output, board, CellClass::Fixed, "fixed-overlay");
       write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
       output << "  </g>\n</svg>\n";

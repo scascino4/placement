@@ -34,11 +34,18 @@ TEST_BIN := $(BIN_DIR)/placement_tests
 OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
 OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(OUTPUT_AUX_FILES))))
 OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
-DREAMPLACE_PL_FILES := $(wildcard data/dreamplace-placements/*.gp.pl)
+DREAMPLACE_PL_FILES := $(wildcard data/ispd2005-dreamplace/*.gp.pl)
 DREAMPLACE_DESIGNS := $(basename $(basename $(notdir $(DREAMPLACE_PL_FILES))))
 DREAMPLACE_OUTPUT_TARGETS := $(addprefix dreamplace-output-,$(DREAMPLACE_DESIGNS))
+FREE_OUTPUT_AUX_FILES := $(wildcard data/ispd2005free/*/*_allfree.aux)
+FREE_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(FREE_OUTPUT_AUX_FILES))))
+FREE_OUTPUT_TARGETS := $(addprefix free-output-,$(FREE_OUTPUT_DESIGNS))
+FREE_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005free-dreamplace/*.macro.gp.pl)
+FREE_DREAMPLACE_DESIGNS := $(patsubst %.macro.gp.pl,%,$(notdir $(FREE_DREAMPLACE_PL_FILES)))
+FREE_DREAMPLACE_OUTPUT_TARGETS := $(addprefix free-dreamplace-output-,$(FREE_DREAMPLACE_DESIGNS))
 
-.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
+.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
+	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -71,7 +78,8 @@ valgrind:
 		VALGRIND_CXXFLAGS="$(VALGRIND_CXXFLAGS)" \
 		VALGRIND_FLAGS="$(VALGRIND_FLAGS)" ./test/valgrind_smoke.sh
 
-outputs: all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS)
+outputs: all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
+	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS)
 
 $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
@@ -83,15 +91,41 @@ $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 		"out/ispd2005/$*/pin-density.svg"
 
 $(DREAMPLACE_OUTPUT_TARGETS): dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
-	@mkdir -p "out/ispd2005/dreamplace-$*"
-	$(PARSE_BIN) --placement-file "data/dreamplace-placements/$*.gp.pl" \
-		"data/ispd2005/$*/$*.dp.aux" "out/ispd2005/dreamplace-$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2005/dreamplace-$*/placement.placebin" \
-		"out/ispd2005/dreamplace-$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005/dreamplace-$*/placement.placebin" \
-		"out/ispd2005/dreamplace-$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005/dreamplace-$*/placement.placebin" \
-		"out/ispd2005/dreamplace-$*/pin-density.svg"
+	@mkdir -p "out/ispd2005-dreamplace/$*"
+	$(PARSE_BIN) --placement-file "data/ispd2005-dreamplace/$*.gp.pl" \
+		"data/ispd2005/$*/$*.dp.aux" "out/ispd2005-dreamplace/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2005-dreamplace/$*/placement.placebin" \
+		"out/ispd2005-dreamplace/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
+		"out/ispd2005-dreamplace/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
+		"out/ispd2005-dreamplace/$*/pin-density.svg"
+
+$(FREE_OUTPUT_TARGETS): free-output-%: $(PARSE_BIN) $(RENDER_BIN)
+	@mkdir -p "out/ispd2005free/$*"
+	$(PARSE_BIN) --placement-file "data/ispd2005free/$*/$*_allfree.pl" \
+		"data/ispd2005free/$*/$*.aux" \
+		"out/ispd2005free/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2005free/$*/placement.placebin" \
+		"out/ispd2005free/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005free/$*/placement.placebin" \
+		"out/ispd2005free/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005free/$*/placement.placebin" \
+		"out/ispd2005free/$*/pin-density.svg"
+
+$(FREE_DREAMPLACE_OUTPUT_TARGETS): free-dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
+	@mkdir -p "out/ispd2005free-dreamplace/$*"
+	$(PARSE_BIN) --placement-file "data/ispd2005free-dreamplace/$*.macro.gp.pl" \
+		"data/ispd2005free/$*/$*.aux" \
+		"out/ispd2005free-dreamplace/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2005free-dreamplace/$*/placement.placebin" \
+		"out/ispd2005free-dreamplace/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg \
+		"out/ispd2005free-dreamplace/$*/placement.placebin" \
+		"out/ispd2005free-dreamplace/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg \
+		"out/ispd2005free-dreamplace/$*/placement.placebin" \
+		"out/ispd2005free-dreamplace/$*/pin-density.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \

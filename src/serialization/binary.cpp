@@ -19,8 +19,6 @@ namespace placement {
 namespace {
 
 constexpr std::array<char, 8> MAGIC{'P', 'L', 'A', 'C', 'E', 'B', 'I', 'N'};
-constexpr std::uint16_t MAJOR_VERSION = 1;
-constexpr std::uint16_t MINOR_VERSION = 0;
 constexpr std::uint64_t MAX_RECORDS = 1'000'000'000;
 constexpr std::uint32_t MAX_STRING = 64 * 1024 * 1024;
 constexpr std::uint32_t MAX_WEIGHTS = 1'000'000;
@@ -203,12 +201,7 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
   atomic_output(output, [&](const auto &temp) {
     Output writer(temp);
 
-    // The fixed-size header leaves flags available for future compatible
-    // additions while major versions continue to identify incompatible data.
     writer.bytes(MAGIC.data(), MAGIC.size());
-    writer.integer(MAJOR_VERSION);
-    writer.integer(MINOR_VERSION);
-    writer.integer<std::uint32_t>(0);
     writer.string(board.name);
     writer.integer(static_cast<std::uint64_t>(board.cells.size()));
     writer.integer(static_cast<std::uint64_t>(board.rows.size()));
@@ -220,6 +213,7 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
       writer.real(cell.width);
       writer.real(cell.height);
       writer.integer(static_cast<std::uint8_t>(cell.kind));
+      writer.integer<std::uint8_t>(cell.macro);
       writer.integer<std::uint8_t>(cell.location.has_value());
       if (cell.location) {
         writer.real(cell.location->x);
@@ -273,17 +267,6 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
   reader.bytes(magic.data(), magic.size());
   if (magic != MAGIC)
     throw Error(input.string() + ": invalid binary magic");
-  const auto major = reader.integer<std::uint16_t>();
-  const auto minor = reader.integer<std::uint16_t>();
-
-  // Newer minor versions remain readable as long as they only use fields and
-  // flags understood by this reader.
-  (void)minor;
-  if (major != MAJOR_VERSION) {
-    throw Error(input.string() + ": unsupported binary major version");
-  }
-  if (reader.integer<std::uint32_t>() != 0)
-    throw Error(input.string() + ": unsupported binary flags");
 
   Board board;
   board.name = reader.string();
@@ -309,6 +292,10 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     cell.width = reader.real();
     cell.height = reader.real();
     cell.kind = reader.enumeration<CellKind>(2, "cell kind");
+    const auto macro = reader.integer<std::uint8_t>();
+    if (macro > 1)
+      throw Error(input.string() + ": invalid macro flag");
+    cell.macro = macro != 0;
 
     const auto has_location = reader.integer<std::uint8_t>();
     if (has_location > 1) {

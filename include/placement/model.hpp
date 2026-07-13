@@ -29,6 +29,9 @@ struct Cell {
   double width{};
   double height{};
   CellKind kind{CellKind::Movable};
+  // Physical macro identity is independent of whether the current placement
+  // allows the cell to move.
+  bool macro{};
   std::optional<Location> location;
   std::vector<double> weights;
 };

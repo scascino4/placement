@@ -14,7 +14,9 @@ be added without changing the core model or command-line applications.
 - `make valgrind`: build debug-symbol variants in `build/valgrind` and run
   parsing and SVG rendering for `adaptec1` under Valgrind Memcheck.
 - `make outputs`: parse all eight legalized `data/ispd2005/*/*.dp.aux`
-  benchmarks into `out/parsed` and render them into `out/svg`.
+  benchmarks, the movable-macro `data/ispd2005free/*/*_allfree.aux` variants,
+  and their available DreamPlace placements into matching directories under
+  `out`.
 - `make clean`: remove compiled artifacts.
 - `make clean-outputs`: remove generated benchmark outputs.
 
