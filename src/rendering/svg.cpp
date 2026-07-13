@@ -15,6 +15,8 @@
 namespace placement {
 namespace {
 
+constexpr std::string_view background_color(bool dark_mode) { return dark_mode ? "#D3D3D3" : "#2C2C2C"; }
+
 [[nodiscard]] std::string lower(std::string_view value) {
   std::string result(value);
   std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
@@ -208,12 +210,12 @@ public:
 
       output << "  <style>\n";
       if (options_.dark_mode)
-        output << "    .background{fill:#000000}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
+        output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
                << "}.movable{fill:#60a5fa;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
                << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke
                << "}\n";
       else
-        output << "    .background{fill:#000000}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
+        output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
                << "}.movable{fill:#3b82f6;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
                << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke
                << "}\n";
@@ -277,7 +279,7 @@ public:
     const auto stroke = span / 8000.0;
 
     write_atomic(output_path, [&](std::ostream &output) {
-      constexpr std::string_view background = "#000000";
+      const auto background = background_color(options_.dark_mode);
       const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
       const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
       const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
@@ -361,7 +363,7 @@ public:
     const auto padding = span * 0.01;
     const auto stroke = span / 8000.0;
     write_atomic(output_path, [&](std::ostream &output) {
-      constexpr std::string_view background = "#000000";
+      const auto background = background_color(options_.dark_mode);
       const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
       const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
       const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";

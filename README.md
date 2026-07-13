@@ -103,8 +103,9 @@ placement convention that Y increases upward and swaps dimensions for rotated
 orientations. Macros are white regardless of placement status. Cells are
 grouped into paths to keep multi-million-cell outputs manageable. Connectivity
 is retained in the binary but is intentionally not drawn in this first
-renderer. Light colors are used by default; pass `--dark-mode` to any SVG
-output format for a dark background and matching high-contrast colors.
+renderer. Light colors on a charcoal background are used by default; pass
+`--dark-mode` to any SVG output format for the alternate palette on a light
+background.
 
 The `utilization-svg` renderer divides the placement region into square bins
 and colors them from green (low utilization) through yellow to red (100% or
