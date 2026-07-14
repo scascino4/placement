@@ -103,8 +103,9 @@ successful write.
 SVGs show row regions, movable cells, macros, fixed terminals, and
 non-interacting fixed objects with separate styles. The writer preserves the
 placement convention that Y increases upward and swaps dimensions for rotated
-orientations. Macros are white regardless of placement status. Cells are
-grouped into paths to keep multi-million-cell outputs manageable. Connectivity
+orientations. Macros are white with contrasting outlines regardless of
+placement status. Cells are grouped into paths to keep multi-million-cell
+outputs manageable. Connectivity
 is retained in the binary but is intentionally not drawn in this first
 renderer. Light colors on a charcoal background are used by default; pass
 `--dark-mode` to any SVG output format for the alternate palette on a light

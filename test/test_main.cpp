@@ -344,7 +344,8 @@ void svg_test() {
             contents.find("class=\"fixed-ni\"") != std::string::npos,
         "SVG cell classes");
   check(contents.find(".background{fill:#2C2C2C}") != std::string::npos, "default placement SVG background is charcoal");
-  check(contents.find(".macro{fill:#ffffff;stroke:#ffffff") != std::string::npos, "light placement SVG macros are white");
+  check(contents.find(".macro{fill:#ffffff;stroke:#1f2937") != std::string::npos,
+        "light placement SVG macros have contrasting outlines");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
 
   auto dark_renderer = placement::make_renderer("svg", {.bin_size = std::nullopt, .dark_mode = true});
@@ -352,7 +353,7 @@ void svg_test() {
   dark_renderer->render(board, dark_svg);
   const auto dark_contents = read(dark_svg);
   check(dark_contents.find(".background{fill:#D3D3D3}") != std::string::npos && dark_contents.find(".movable{fill:#60a5fa") != std::string::npos &&
-            dark_contents.find(".macro{fill:#ffffff;stroke:#ffffff") != std::string::npos,
+            dark_contents.find(".macro{fill:#ffffff;stroke:#cbd5e1") != std::string::npos,
         "dark placement SVG palette");
   check(contents.find("#0f172a") == std::string::npos, "light placement SVG remains the default");
 

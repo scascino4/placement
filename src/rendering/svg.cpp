@@ -158,12 +158,12 @@ public:
       output << "  <style>\n";
       if (options_.dark_mode)
         output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
-               << "}.movable{fill:#60a5fa;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
+               << "}.movable{fill:#60a5fa;stroke:none}.macro{fill:#ffffff;stroke:#cbd5e1;stroke-width:" << stroke
                << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke
                << "}\n";
       else
         output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-               << "}.movable{fill:#3b82f6;stroke:none}.macro{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke
+               << "}.movable{fill:#3b82f6;stroke:none}.macro{fill:#ffffff;stroke:#1f2937;stroke-width:" << stroke
                << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke
                << "}\n";
       output << "  </style>\n";
