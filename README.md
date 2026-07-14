@@ -25,10 +25,12 @@ make -j 8 outputs
 `utilization.svg`, and `pin-density.svg` under `out/ispd2005/<design>`. When a
 matching `data/ispd2005-dreamplace/<design>.gp.pl` exists, it creates the same
 four files under `out/ispd2005-dreamplace/<design>` using that placement instead.
-The movable-macro variants in `data/ispd2005free` are generated in the same
-way: their original manifests preserve macro identity while
-`<design>_allfree.pl` supplies movable locations under
-`out/ispd2005free/<design>`. Placements from
+The movable-macro variants in `data/ispd2005free` use their original manifests
+to preserve macro identity while `<design>_allfree.pl` makes those macros
+movable. These files are starting configurations rather than completed
+placements: every standard cell has the placeholder location `(0, 0)`, so the
+corresponding `placement.svg` stacks the standard cells at the origin and
+primarily shows the initially positioned macros. Fully placed results from
 `data/ispd2005free-dreamplace/<design>.macro.gp.pl` are written under
 `out/ispd2005free-dreamplace/<design>`.
 It uses one job by default;
