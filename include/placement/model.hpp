@@ -111,6 +111,29 @@ struct PinDensityGrid {
   [[nodiscard]] const PinDensityBin &at(std::uint64_t column, std::uint64_t row) const;
 };
 
+struct CellDensityBin {
+  // Movable standard-cell/bin overlap divided by capacity left after macros
+  // and fixed physical objects are removed. Overlaps are additive.
+  double movable_area{};
+  double available_area{};
+
+  [[nodiscard]] std::optional<double> density() const;
+};
+
+struct CellDensityGrid {
+  double min_x{};
+  double min_y{};
+  double max_x{};
+  double max_y{};
+  double bin_size{};
+  std::uint64_t columns{};
+  std::uint64_t rows{};
+  // Row-major bins, starting at the placement region's lower-left corner.
+  std::vector<CellDensityBin> bins;
+
+  [[nodiscard]] const CellDensityBin &at(std::uint64_t column, std::uint64_t row) const;
+};
+
 struct Board {
   std::string name;
   std::vector<Cell> cells;
@@ -120,6 +143,9 @@ struct Board {
 
   [[nodiscard]] UtilizationGrid utilization(double bin_size) const;
   [[nodiscard]] PinDensityGrid pin_density(double bin_size) const;
+  // Includes placed movable standard cells. Macros and fixed physical objects
+  // reduce available capacity; non-interacting objects are excluded.
+  [[nodiscard]] CellDensityGrid cell_density(double bin_size) const;
 };
 
 } // namespace placement

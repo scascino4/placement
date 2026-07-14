@@ -13,7 +13,7 @@ namespace {
 
 void usage(std::ostream &output) {
   output << "Usage: placement_render [--serialization-format binary] "
-            "[--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] [--dark-mode] <input> <output>\n";
+            "[--output-format svg|utilization-svg|pin-density-svg|cell-density-svg] [--bin-size size] [--dark-mode] <input> <output>\n";
 }
 
 } // namespace

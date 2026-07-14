@@ -12,7 +12,7 @@ build/bin/placement_parse [--input-format bookshelf] \
   [--placement-file placement.pl] \
   [--serialization-format binary] input.dp.aux output.placebin
 build/bin/placement_render [--serialization-format binary] \
-  [--output-format svg|utilization-svg|pin-density-svg] [--bin-size size] [--dark-mode] output.placebin output.svg
+  [--output-format svg|utilization-svg|pin-density-svg|cell-density-svg] [--bin-size size] [--dark-mode] output.placebin output.svg
 make test
 make valgrind
 make outputs
@@ -22,15 +22,16 @@ make -j 8 outputs
 
 `make outputs` parses the legalized `*.dp.aux` manifest in each
 `data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`,
-`utilization.svg`, and `pin-density.svg` under `out/ispd2005/<design>`. When a
+`utilization.svg`, `pin-density.svg`, and `cell-density.svg` under
+`out/ispd2005/<design>`. When a
 matching `data/ispd2005-dreamplace/<design>.gp.pl` exists, it creates the same
-four files under `out/ispd2005-dreamplace/<design>` using that placement instead.
+five files under `out/ispd2005-dreamplace/<design>` using that placement instead.
 The movable-macro variants in `data/ispd2005free` use their original manifests
 to preserve macro identity while `<design>_allfree.pl` makes those macros
 movable. These files are starting configurations rather than completed
-placements: every standard cell has the placeholder location `(0, 0)`, so the
-corresponding `placement.svg` stacks the standard cells at the origin and
-primarily shows the initially positioned macros. Fully placed results from
+placements: every standard cell has the placeholder location `(0, 0)`, so its
+placement and density views stack the standard cells at the origin and
+primarily describe the initial configuration. Fully placed results from
 `data/ispd2005free-dreamplace/<design>.macro.gp.pl` are written under
 `out/ispd2005free-dreamplace/<design>`.
 It uses one job by default;
@@ -39,10 +40,10 @@ remain ordered within each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
 
 `make valgrind` builds debug-symbol variants of both applications in
-`build/valgrind`, then checks parsing, placement, utilization, and pin-density
-SVG rendering with Valgrind Memcheck using `adaptec1`, the smallest ISPD
-benchmark. It is an opt-in smoke test because it requires Valgrind and is
-substantially slower than `make test`.
+`build/valgrind`, then checks parsing, placement, utilization, pin-density, and
+cell-density SVG rendering with Valgrind Memcheck using `adaptec1`, the
+smallest ISPD benchmark. It is an opt-in smoke test because it requires
+Valgrind and is substantially slower than `make test`.
 Temporary placement and SVG outputs are removed automatically. Set
 `VALGRIND_FLAGS` to replace the default Memcheck arguments or
 `VALGRIND_CXXFLAGS` to replace the debug build flags.
@@ -125,3 +126,14 @@ yellow to red; pin-density colors saturate at the design's 95th percentile so
 isolated hotspots do not flatten the rest of the heatmap. Bins without legal
 placement area are gray. Macro footprints use the same opaque overlay as the
 utilization view. Exact pin counts and densities are embedded in SVG tooltips.
+
+The `cell-density-svg` renderer measures the exact geometric overlap of placed
+movable standard cells with each square bin. All macros reduce the bin's
+available area instead of contributing density, regardless of their placement
+status, and are shown with the same opaque light mask. Other fixed physical
+objects also reduce capacity, while objects marked non-interacting are
+excluded. This is a post-placement density map rather than an exact
+reproduction of DREAMPlace's smoothed electrostatic objective, which also uses
+target-density scaling and synthetic filler cells during optimization.
+Movable standard-cell area, available area, and density are embedded in SVG
+tooltips.

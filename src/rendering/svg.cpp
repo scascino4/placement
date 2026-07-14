@@ -411,6 +411,82 @@ private:
   RenderOptions options_;
 };
 
+class CellDensitySvgWriter final : public Renderer {
+public:
+  explicit CellDensitySvgWriter(RenderOptions options) : options_(options) {}
+
+  void render(const Board &board, const std::filesystem::path &output_path) const override {
+    Bounds core;
+    for (const auto &row : board.rows) {
+      for (const auto &subrow : row.subrows)
+        core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+    }
+    if (core.empty())
+      throw Error("cannot render cell density without a placement region");
+
+    const auto width = core.max_x - core.min_x;
+    const auto height = core.max_y - core.min_y;
+    const auto bin_size = options_.bin_size.value_or(std::max(width, height) / 100.0);
+    const auto grid = board.cell_density(bin_size);
+    const auto span = std::max(width, height);
+    const auto padding = span * 0.01;
+    const auto stroke = span / 8000.0;
+
+    write_atomic(output_path, [&](std::ostream &output) {
+      const auto background = background_color(options_.dark_mode);
+      const auto surface = options_.dark_mode ? "#0f172a" : "#f8fafc";
+      const auto grid_stroke = options_.dark_mode ? "#0f172a" : "#ffffff";
+      const auto fixed_stroke = options_.dark_mode ? "#cbd5e1" : "#1f2937";
+      const auto fixed_ni_stroke = options_.dark_mode ? "#94a3b8" : "#334155";
+      const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
+      output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
+             << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+             << "  <title>" << escape(board.name) << " cell density</title>\n"
+             << "  <desc>" << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
+             << "; density is movable standard-cell overlap divided by capacity after macros and fixed physical objects are removed</desc>\n"
+             << "  <style>\n"
+             << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << stroke
+             << "}.macro-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-overlay{fill:" << surface
+             << ";stroke:" << fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni-overlay{fill:" << surface << ";stroke:" << fixed_ni_stroke
+             << ";stroke-width:" << stroke << "}\n"
+             << "  </style>\n"
+             << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
+             << height + 2 * padding << "\"/>\n"
+             << "  <g transform=\"translate(" << -core.min_x << ' ' << core.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+
+      for (std::uint64_t row = 0; row < grid.rows; ++row) {
+        const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
+        const auto bin_height = std::min(grid.bin_size, grid.max_y - y);
+        for (std::uint64_t column = 0; column < grid.columns; ++column) {
+          const auto x = grid.min_x + static_cast<double>(column) * grid.bin_size;
+          const auto bin_width = std::min(grid.bin_size, grid.max_x - x);
+          const auto &bin = grid.at(column, row);
+          const auto density = bin.density();
+          output << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << bin_width << "\" height=\"" << bin_height
+                 << "\" fill=\"" << (density ? utilization_color(*density, options_.dark_mode) : unavailable) << "\"><title>" << bin.movable_area
+                 << " movable standard-cell area; " << bin.available_area << " available area; density ";
+          if (density)
+            output << *density;
+          else
+            output << "unavailable";
+          output << "</title></rect>\n";
+        }
+      }
+
+      // Macros are obstacles rather than standard cells, regardless of their
+      // placement status, so their light masks remain easy to identify.
+      write_paths(output, board, CellClass::Macro, "macro-overlay");
+      write_paths(output, board, CellClass::Fixed, "fixed-overlay");
+      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
+      output << "  </g>\n</svg>\n";
+    });
+  }
+
+private:
+  RenderOptions options_;
+};
+
 } // namespace
 
 std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options) {
@@ -420,6 +496,8 @@ std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions o
     return std::make_unique<UtilizationSvgWriter>(options);
   if (lower(format) == "pin-density-svg")
     return std::make_unique<PinDensitySvgWriter>(options);
+  if (lower(format) == "cell-density-svg")
+    return std::make_unique<CellDensitySvgWriter>(options);
   throw Error("unsupported output format '" + std::string(format) + "'");
 }
 

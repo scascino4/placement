@@ -275,6 +275,55 @@ void pin_density_test() {
   expect_error([&] { (void)board.pin_density(10); }, "invalid cell reference");
 }
 
+void cell_density_test() {
+  placement::Board board;
+  placement::Row row;
+  row.coordinate = 0;
+  row.height = 10;
+  row.site_spacing = 1;
+  row.subrows.push_back({0, 25});
+  board.rows.push_back(row);
+
+  placement::Cell movable;
+  movable.width = 10;
+  movable.height = 10;
+  movable.location.emplace();
+  movable.location->x = 15;
+  board.cells.push_back(movable);
+
+  placement::Cell macro = movable;
+  macro.macro = true;
+  macro.location->x = 0;
+  macro.location->status = placement::PlacementStatus::Fixed;
+  board.cells.push_back(macro);
+
+  placement::Cell non_interacting = movable;
+  non_interacting.kind = placement::CellKind::TerminalNonInteracting;
+  non_interacting.location->x = 5;
+  non_interacting.location->status = placement::PlacementStatus::FixedNonInteracting;
+  board.cells.push_back(non_interacting);
+
+  placement::Cell unplaced = movable;
+  unplaced.location.reset();
+  board.cells.push_back(unplaced);
+
+  const auto grid = board.cell_density(10);
+  check(grid.columns == 3 && grid.rows == 1 && grid.bins.size() == 3, "cell density grid dimensions");
+  check(!grid.at(0, 0).density() && close(grid.at(0, 0).movable_area, 0) && close(grid.at(0, 0).available_area, 0),
+        "fixed macros consume capacity without contributing density");
+  check(close(grid.at(1, 0).movable_area, 50) && close(*grid.at(1, 0).density(), 0.5), "cell density splits movable cells at bin boundaries");
+  check(close(grid.at(2, 0).available_area, 50) && close(*grid.at(2, 0).density(), 1),
+        "cell density clips edge bins and excludes non-interacting cells");
+
+  board.cells[1].location->status = placement::PlacementStatus::Movable;
+  const auto movable_macro_grid = board.cell_density(10);
+  check(!movable_macro_grid.at(0, 0).density() && close(movable_macro_grid.at(0, 0).movable_area, 0) &&
+            close(movable_macro_grid.at(0, 0).available_area, 0),
+        "movable macros remain excluded from cell density");
+  expect_error([&] { (void)board.cell_density(0); }, "finite and positive");
+  expect_error([&] { (void)grid.at(3, 0); }, "out of bounds");
+}
+
 void svg_test() {
   TemporaryDirectory temporary;
   fixture(temporary.path());
@@ -349,6 +398,30 @@ void svg_test() {
             dark_pin_density_contents.find("stroke:#cbd5e1") != std::string::npos,
         "dark pin density SVG palette");
 
+  auto cell_density_renderer = placement::make_renderer("cell-density-svg", {.bin_size = 5.0});
+  const auto cell_density_svg = temporary.path() / "cell-density.svg";
+  cell_density_renderer->render(board, cell_density_svg);
+  const auto cell_density_contents = read(cell_density_svg);
+  check(cell_density_contents.find("tiny &lt;&amp;&gt; cell density") != std::string::npos, "cell density SVG title");
+  check(cell_density_contents.find("class=\"bin\"") != std::string::npos &&
+            cell_density_contents.find("movable standard-cell area;") != std::string::npos &&
+            cell_density_contents.find("available area; density") != std::string::npos,
+        "cell density SVG bins and tooltips");
+  check(cell_density_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
+            cell_density_contents.find("class=\"macro-overlay\"") != std::string::npos &&
+            cell_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+        "cell density SVG masks macros and non-interacting objects");
+
+  auto dark_cell_density_renderer = placement::make_renderer("cell-density-svg", {.bin_size = 5.0, .dark_mode = true});
+  const auto dark_cell_density_svg = temporary.path() / "cell-density-dark.svg";
+  dark_cell_density_renderer->render(board, dark_cell_density_svg);
+  const auto dark_cell_density_contents = read(dark_cell_density_svg);
+  check(dark_cell_density_contents.find(".background{fill:#D3D3D3}") != std::string::npos &&
+            dark_cell_density_contents.find(".macro-overlay{fill:#0f172a") != std::string::npos &&
+            dark_cell_density_contents.find(".fixed-ni-overlay{fill:#0f172a") != std::string::npos &&
+            dark_cell_density_contents.find("stroke:#cbd5e1") != std::string::npos,
+        "dark cell density SVG palette");
+
   placement::Board empty;
   expect_error([&] { renderer->render(empty, temporary.path() / "empty.svg"); }, "without geometry");
   check(!std::filesystem::exists(temporary.path() / "empty.svg"), "failed render must not leave output");
@@ -364,6 +437,7 @@ int main() {
       {"placement override", placement_override_test},
       {"utilization grid", utilization_test},
       {"pin density grid", pin_density_test},
+      {"cell density grid", cell_density_test},
       {"SVG renderer", svg_test},
   };
   std::size_t passed = 0;
