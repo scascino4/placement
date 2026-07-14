@@ -23,8 +23,8 @@ TEST_OBJECT := $(OBJ_DIR)/test_main.o
 
 FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
 	include/placement/*/*.hpp \
-	src/*.cpp \
-	src/*/*.cpp \
+	src/*.cpp src/*.hpp \
+	src/*/*.cpp src/*/*.hpp \
 	test/*.cpp)
 
 PARSE_BIN := $(BIN_DIR)/placement_parse

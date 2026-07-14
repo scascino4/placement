@@ -36,6 +36,19 @@ struct Cell {
   std::vector<double> weights;
 };
 
+struct PlacedRectangle {
+  double x{};
+  double y{};
+  double width{};
+  double height{};
+
+  [[nodiscard]] double right() const { return x + width; }
+  [[nodiscard]] double top() const { return y + height; }
+};
+
+// Returns the oriented footprint of a cell that has a location.
+[[nodiscard]] PlacedRectangle placed_rectangle(const Cell &cell);
+
 struct Subrow {
   double origin{};
   std::uint64_t site_count{};

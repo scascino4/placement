@@ -1,18 +1,17 @@
 #include "placement/serialization/serializer.hpp"
 
+#include "../atomic_output.hpp"
 #include "placement/error.hpp"
 
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cctype>
-#include <chrono>
 #include <concepts>
 #include <cstdint>
 #include <fstream>
 #include <limits>
 #include <string>
-#include <system_error>
 #include <type_traits>
 
 namespace placement {
@@ -60,6 +59,8 @@ public:
   }
 
   void real(double value) { integer(std::bit_cast<std::uint64_t>(value)); }
+
+  void boolean(bool value) { integer<std::uint8_t>(value); }
 
   void string(std::string_view value) {
     if (value.size() > MAX_STRING) {
@@ -141,6 +142,13 @@ public:
     return static_cast<Enum>(value);
   }
 
+  [[nodiscard]] bool boolean(std::string_view name) {
+    const auto value = integer<std::uint8_t>();
+    if (value > 1)
+      throw Error(path_.string() + ": invalid " + std::string(name));
+    return value != 0;
+  }
+
   void require_end() {
     char byte{};
     if (stream_.read(&byte, 1)) {
@@ -158,38 +166,6 @@ private:
   std::ifstream stream_;
 };
 
-[[nodiscard]] std::filesystem::path temp_path(const std::filesystem::path &output) {
-  const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-  return output.string() + ".tmp." + std::to_string(tick);
-}
-
-template <typename Function> void atomic_output(const std::filesystem::path &output, Function &&function) {
-  if (!output.parent_path().empty()) {
-    std::filesystem::create_directories(output.parent_path());
-  }
-
-  // Never expose a partially written placement. The fallback removal handles
-  // platforms whose rename operation cannot replace an existing file.
-  const auto temp = temp_path(output);
-  try {
-    function(temp);
-    std::error_code error;
-    std::filesystem::rename(temp, output, error);
-    if (error) {
-      std::filesystem::remove(output, error);
-      error.clear();
-      std::filesystem::rename(temp, output, error);
-    }
-    if (error) {
-      throw Error("cannot replace " + output.string() + ": " + error.message());
-    }
-  } catch (...) {
-    std::error_code ignored;
-    std::filesystem::remove(temp, ignored);
-    throw;
-  }
-}
-
 void check_count(std::uint64_t count, const Input &input, std::string_view name) {
   if (count > MAX_RECORDS)
     throw Error(input.path().string() + ": invalid " + std::string(name) + " count");
@@ -198,7 +174,7 @@ void check_count(std::uint64_t count, const Input &input, std::string_view name)
 } // namespace
 
 void BinarySerializer::write(const Board &board, const std::filesystem::path &output) const {
-  atomic_output(output, [&](const auto &temp) {
+  detail::atomic_output(output, [&](const auto &temp) {
     Output writer(temp);
 
     writer.bytes(MAGIC.data(), MAGIC.size());
@@ -213,15 +189,15 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
       writer.real(cell.width);
       writer.real(cell.height);
       writer.integer(static_cast<std::uint8_t>(cell.kind));
-      writer.integer<std::uint8_t>(cell.macro);
-      writer.integer<std::uint8_t>(cell.location.has_value());
+      writer.boolean(cell.macro);
+      writer.boolean(cell.location.has_value());
       if (cell.location) {
         writer.real(cell.location->x);
         writer.real(cell.location->y);
         writer.integer(static_cast<std::uint8_t>(cell.location->orientation));
         writer.integer(static_cast<std::uint8_t>(cell.location->status));
         const bool has_dimensions = cell.location->width && cell.location->height;
-        writer.integer<std::uint8_t>(has_dimensions);
+        writer.boolean(has_dimensions);
         if (has_dimensions) {
           writer.real(*cell.location->width);
           writer.real(*cell.location->height);
@@ -292,29 +268,16 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     cell.width = reader.real();
     cell.height = reader.real();
     cell.kind = reader.enumeration<CellKind>(2, "cell kind");
-    const auto macro = reader.integer<std::uint8_t>();
-    if (macro > 1)
-      throw Error(input.string() + ": invalid macro flag");
-    cell.macro = macro != 0;
+    cell.macro = reader.boolean("macro flag");
 
-    const auto has_location = reader.integer<std::uint8_t>();
-    if (has_location > 1) {
-      throw Error(input.string() + ": invalid placement presence flag");
-    }
-
-    if (has_location) {
+    if (reader.boolean("placement presence flag")) {
       Location location;
       location.x = reader.real();
       location.y = reader.real();
       location.orientation = reader.enumeration<Orientation>(7, "orientation");
       location.status = reader.enumeration<PlacementStatus>(2, "placement status");
 
-      const auto has_dimensions = reader.integer<std::uint8_t>();
-      if (has_dimensions > 1) {
-        throw Error(input.string() + ": invalid dimensions presence flag");
-      }
-
-      if (has_dimensions) {
+      if (reader.boolean("dimensions presence flag")) {
         location.width = reader.real();
         location.height = reader.real();
       }

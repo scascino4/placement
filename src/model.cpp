@@ -6,43 +6,53 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
 namespace placement {
+PlacedRectangle placed_rectangle(const Cell &cell) {
+  const auto &location = *cell.location;
+  double width = location.width.value_or(cell.width);
+  double height = location.height.value_or(cell.height);
+  switch (location.orientation) {
+  case Orientation::E:
+  case Orientation::W:
+  case Orientation::FE:
+  case Orientation::FW:
+    std::swap(width, height);
+    break;
+  default:
+    break;
+  }
+  return {location.x, location.y, width, height};
+}
+
 namespace {
-
-struct Rectangle {
-  double x{};
-  double y{};
-  double w{};
-  double h{};
-
-  [[nodiscard]] double right() const { return x + w; }
-  [[nodiscard]] double top() const { return y + h; }
-};
 
 struct Point {
   double x{};
   double y{};
 };
 
-[[nodiscard]] Rectangle cell_rectangle(const Cell &cell) {
-  const auto &location = *cell.location;
-  double w = location.width.value_or(cell.width);
-  double h = location.height.value_or(cell.height);
-  switch (location.orientation) {
-  case Orientation::E:
-  case Orientation::W:
-  case Orientation::FE:
-  case Orientation::FW:
-    std::swap(w, h);
-    break;
-  default:
-    break;
+void validate(const PlacedRectangle &rect);
+
+struct Bounds {
+  double min_x{std::numeric_limits<double>::infinity()};
+  double min_y{std::numeric_limits<double>::infinity()};
+  double max_x{-std::numeric_limits<double>::infinity()};
+  double max_y{-std::numeric_limits<double>::infinity()};
+
+  void include(const PlacedRectangle &rect) {
+    validate(rect);
+    min_x = std::min(min_x, rect.x);
+    min_y = std::min(min_y, rect.y);
+    max_x = std::max(max_x, rect.right());
+    max_y = std::max(max_y, rect.top());
   }
-  return {location.x, location.y, w, h};
-}
+
+  [[nodiscard]] bool empty() const { return !std::isfinite(min_x) || max_x <= min_x || max_y <= min_y; }
+};
 
 [[nodiscard]] bool movable(const Cell &cell) {
   return cell.kind == CellKind::Movable && cell.location && cell.location->status == PlacementStatus::Movable;
@@ -51,7 +61,7 @@ struct Point {
 [[nodiscard]] bool fixed(const Cell &cell) { return cell.location && !movable(cell); }
 
 [[nodiscard]] Point pin_position(const Cell &cell, const Pin &pin) {
-  const auto rect = cell_rectangle(cell);
+  const auto rect = placed_rectangle(cell);
   double x = pin.offset_x;
   double y = pin.offset_y;
   switch (cell.location->orientation) {
@@ -80,19 +90,63 @@ struct Point {
     std::tie(x, y) = std::pair{-y, -x};
     break;
   }
-  return {rect.x + rect.w / 2.0 + x, rect.y + rect.h / 2.0 + y};
+  return {rect.x + rect.width / 2.0 + x, rect.y + rect.height / 2.0 + y};
 }
 
 enum class Area { Movable, Placeable };
 
-void validate(const Rectangle &rect) {
-  if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.w) || !std::isfinite(rect.h) || rect.w < 0 || rect.h < 0)
+void validate(const PlacedRectangle &rect) {
+  if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0 ||
+      rect.height < 0)
     throw Error("cannot calculate placement density for non-finite or negative geometry");
 }
 
-template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const Rectangle &rect, Accumulate accumulate) {
+[[nodiscard]] Bounds placement_bounds(const std::vector<Row> &rows) {
+  Bounds bounds;
+  for (const auto &row : rows) {
+    for (const auto &subrow : row.subrows)
+      bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+  }
+  return bounds;
+}
+
+template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size, std::string_view kind) {
+  if (!std::isfinite(bin_size) || bin_size <= 0)
+    throw Error(std::string(kind) + " bin size must be finite and positive");
+
+  const auto bounds = placement_bounds(rows);
+  if (bounds.empty())
+    throw Error("cannot calculate " + std::string(kind) + " without a non-empty placement region");
+
+  const auto columns = static_cast<std::uint64_t>(std::ceil((bounds.max_x - bounds.min_x) / bin_size));
+  const auto row_count = static_cast<std::uint64_t>(std::ceil((bounds.max_y - bounds.min_y) / bin_size));
+  if (columns == 0 || row_count == 0 || columns > std::numeric_limits<std::size_t>::max() / row_count)
+    throw Error(std::string(kind) + " grid is too large");
+
+  Grid grid{bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y, bin_size, columns, row_count, {}};
+  grid.bins.resize(static_cast<std::size_t>(columns * row_count));
+  return grid;
+}
+
+template <typename Grid, typename Function> void for_each_bin(Grid &grid, Function function) {
+  for (std::uint64_t row = 0; row < grid.rows; ++row) {
+    const auto height = std::min(grid.bin_size, grid.max_y - (grid.min_y + static_cast<double>(row) * grid.bin_size));
+    for (std::uint64_t column = 0; column < grid.columns; ++column) {
+      const auto width = std::min(grid.bin_size, grid.max_x - (grid.min_x + static_cast<double>(column) * grid.bin_size));
+      function(grid.bins[static_cast<std::size_t>(row * grid.columns + column)], width * height);
+    }
+  }
+}
+
+template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row, std::string_view kind) {
+  if (column >= grid.columns || row >= grid.rows)
+    throw Error(std::string(kind) + " bin index is out of bounds");
+  return grid.bins[static_cast<std::size_t>(row * grid.columns + column)];
+}
+
+template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const PlacedRectangle &rect, Accumulate accumulate) {
   validate(rect);
-  if (rect.w == 0 || rect.h == 0)
+  if (rect.width == 0 || rect.height == 0)
     return;
 
   const auto x0 = std::max(rect.x, grid.min_x);
@@ -120,7 +174,7 @@ template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const
   }
 }
 
-void add_overlap(UtilizationGrid &grid, const Rectangle &rect, Area area, double scale = 1.0) {
+void add_overlap(UtilizationGrid &grid, const PlacedRectangle &rect, Area area, double scale = 1.0) {
   add_overlap(grid, rect, [area, scale](UtilizationBin &bin, double overlap) {
     if (area == Area::Movable)
       bin.movable_area += scale * overlap;
@@ -137,11 +191,7 @@ std::optional<double> UtilizationBin::utilization() const {
   return movable_area / placeable_area;
 }
 
-const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t row) const {
-  if (column >= columns || row >= rows)
-    throw Error("utilization bin index is out of bounds");
-  return bins[static_cast<std::size_t>(row * columns + column)];
-}
+const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "utilization"); }
 
 double PinDensityBin::density() const {
   if (area <= 0)
@@ -149,11 +199,7 @@ double PinDensityBin::density() const {
   return static_cast<double>(pin_count) / area;
 }
 
-const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row) const {
-  if (column >= columns || row >= rows)
-    throw Error("pin density bin index is out of bounds");
-  return bins[static_cast<std::size_t>(row * columns + column)];
-}
+const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "pin density"); }
 
 std::optional<double> CellDensityBin::density() const {
   if (available_area <= 0)
@@ -161,42 +207,10 @@ std::optional<double> CellDensityBin::density() const {
   return movable_area / available_area;
 }
 
-const CellDensityBin &CellDensityGrid::at(std::uint64_t column, std::uint64_t row) const {
-  if (column >= columns || row >= rows)
-    throw Error("cell density bin index is out of bounds");
-  return bins[static_cast<std::size_t>(row * columns + column)];
-}
+const CellDensityBin &CellDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "cell density"); }
 
 UtilizationGrid Board::utilization(double bin_size) const {
-  if (!std::isfinite(bin_size) || bin_size <= 0)
-    throw Error("utilization bin size must be finite and positive");
-
-  auto min_x = std::numeric_limits<double>::infinity();
-  auto min_y = std::numeric_limits<double>::infinity();
-  auto max_x = -std::numeric_limits<double>::infinity();
-  auto max_y = -std::numeric_limits<double>::infinity();
-
-  for (const auto &row : rows) {
-    for (const auto &subrow : row.subrows) {
-      const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
-      validate(rect);
-      min_x = std::min(min_x, rect.x);
-      min_y = std::min(min_y, rect.y);
-      max_x = std::max(max_x, rect.right());
-      max_y = std::max(max_y, rect.top());
-    }
-  }
-
-  if (!std::isfinite(min_x) || max_x <= min_x || max_y <= min_y)
-    throw Error("cannot calculate utilization without a non-empty placement region");
-
-  const auto cols = static_cast<std::uint64_t>(std::ceil((max_x - min_x) / bin_size));
-  const auto row_count = static_cast<std::uint64_t>(std::ceil((max_y - min_y) / bin_size));
-  if (cols == 0 || row_count == 0 || cols > std::numeric_limits<std::size_t>::max() / row_count)
-    throw Error("utilization grid is too large");
-
-  UtilizationGrid grid{min_x, min_y, max_x, max_y, bin_size, cols, row_count, {}};
-  grid.bins.resize(static_cast<std::size_t>(cols * row_count));
+  auto grid = make_grid<UtilizationGrid>(rows, bin_size, "utilization");
 
   for (const auto &row : rows) {
     for (const auto &subrow : row.subrows)
@@ -211,7 +225,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
   for (const auto &row : rows)
     max_row_height = std::max(max_row_height, row.height);
 
-  const auto subtract_row_overlap = [&](const Rectangle &rect) {
+  const auto subtract_row_overlap = [&](const PlacedRectangle &rect) {
     // Only rows that can intersect the blockage need to be examined.
     const auto first = std::ranges::lower_bound(row_order, rect.y - max_row_height, {}, [this](std::size_t index) { return rows[index].coordinate; });
 
@@ -239,7 +253,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
   for (const auto &cell : cells) {
     if (!cell.location)
       continue;
-    const auto rect = cell_rectangle(cell);
+    const auto rect = placed_rectangle(cell);
     if (cell.macro) {
       // Macros occupy row area regardless of whether they are movable in the
       // current placement. Standard-cell utilization excludes their footprint.
@@ -258,42 +272,8 @@ UtilizationGrid Board::utilization(double bin_size) const {
 }
 
 PinDensityGrid Board::pin_density(double bin_size) const {
-  if (!std::isfinite(bin_size) || bin_size <= 0)
-    throw Error("pin density bin size must be finite and positive");
-
-  auto min_x = std::numeric_limits<double>::infinity();
-  auto min_y = std::numeric_limits<double>::infinity();
-  auto max_x = -std::numeric_limits<double>::infinity();
-  auto max_y = -std::numeric_limits<double>::infinity();
-
-  for (const auto &row : rows) {
-    for (const auto &subrow : row.subrows) {
-      const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
-      validate(rect);
-      min_x = std::min(min_x, rect.x);
-      min_y = std::min(min_y, rect.y);
-      max_x = std::max(max_x, rect.right());
-      max_y = std::max(max_y, rect.top());
-    }
-  }
-
-  if (!std::isfinite(min_x) || max_x <= min_x || max_y <= min_y)
-    throw Error("cannot calculate pin density without a non-empty placement region");
-
-  const auto columns = static_cast<std::uint64_t>(std::ceil((max_x - min_x) / bin_size));
-  const auto row_count = static_cast<std::uint64_t>(std::ceil((max_y - min_y) / bin_size));
-  if (columns == 0 || row_count == 0 || columns > std::numeric_limits<std::size_t>::max() / row_count)
-    throw Error("pin density grid is too large");
-
-  PinDensityGrid grid{min_x, min_y, max_x, max_y, bin_size, columns, row_count, {}};
-  grid.bins.resize(static_cast<std::size_t>(columns * row_count));
-  for (std::uint64_t row = 0; row < row_count; ++row) {
-    const auto height = std::min(bin_size, max_y - (min_y + static_cast<double>(row) * bin_size));
-    for (std::uint64_t column = 0; column < columns; ++column) {
-      const auto width = std::min(bin_size, max_x - (min_x + static_cast<double>(column) * bin_size));
-      grid.bins[static_cast<std::size_t>(row * columns + column)].area = width * height;
-    }
-  }
+  auto grid = make_grid<PinDensityGrid>(rows, bin_size, "pin density");
+  for_each_bin(grid, [](PinDensityBin &bin, double area) { bin.area = area; });
 
   for (const auto &pin : pins) {
     if (pin.cell >= cells.size())
@@ -304,61 +284,27 @@ PinDensityGrid Board::pin_density(double bin_size) const {
     const auto point = pin_position(cell, pin);
     if (!std::isfinite(point.x) || !std::isfinite(point.y))
       throw Error("cannot calculate pin density for non-finite pin geometry");
-    if (point.x < min_x || point.x > max_x || point.y < min_y || point.y > max_y)
+    if (point.x < grid.min_x || point.x > grid.max_x || point.y < grid.min_y || point.y > grid.max_y)
       continue;
-    const auto column = point.x == max_x ? columns - 1 : static_cast<std::uint64_t>((point.x - min_x) / bin_size);
-    const auto row = point.y == max_y ? row_count - 1 : static_cast<std::uint64_t>((point.y - min_y) / bin_size);
-    ++grid.bins[static_cast<std::size_t>(row * columns + column)].pin_count;
+    const auto column = point.x == grid.max_x ? grid.columns - 1 : static_cast<std::uint64_t>((point.x - grid.min_x) / bin_size);
+    const auto row = point.y == grid.max_y ? grid.rows - 1 : static_cast<std::uint64_t>((point.y - grid.min_y) / bin_size);
+    ++grid.bins[static_cast<std::size_t>(row * grid.columns + column)].pin_count;
   }
 
   return grid;
 }
 
 CellDensityGrid Board::cell_density(double bin_size) const {
-  if (!std::isfinite(bin_size) || bin_size <= 0)
-    throw Error("cell density bin size must be finite and positive");
-
-  auto min_x = std::numeric_limits<double>::infinity();
-  auto min_y = std::numeric_limits<double>::infinity();
-  auto max_x = -std::numeric_limits<double>::infinity();
-  auto max_y = -std::numeric_limits<double>::infinity();
-
-  for (const auto &row : rows) {
-    for (const auto &subrow : row.subrows) {
-      const Rectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
-      validate(rect);
-      min_x = std::min(min_x, rect.x);
-      min_y = std::min(min_y, rect.y);
-      max_x = std::max(max_x, rect.right());
-      max_y = std::max(max_y, rect.top());
-    }
-  }
-
-  if (!std::isfinite(min_x) || max_x <= min_x || max_y <= min_y)
-    throw Error("cannot calculate cell density without a non-empty placement region");
-
-  const auto columns = static_cast<std::uint64_t>(std::ceil((max_x - min_x) / bin_size));
-  const auto row_count = static_cast<std::uint64_t>(std::ceil((max_y - min_y) / bin_size));
-  if (columns == 0 || row_count == 0 || columns > std::numeric_limits<std::size_t>::max() / row_count)
-    throw Error("cell density grid is too large");
-
-  CellDensityGrid grid{min_x, min_y, max_x, max_y, bin_size, columns, row_count, {}};
-  grid.bins.resize(static_cast<std::size_t>(columns * row_count));
-  for (std::uint64_t row = 0; row < row_count; ++row) {
-    const auto height = std::min(bin_size, max_y - (min_y + static_cast<double>(row) * bin_size));
-    for (std::uint64_t column = 0; column < columns; ++column) {
-      const auto width = std::min(bin_size, max_x - (min_x + static_cast<double>(column) * bin_size));
-      grid.bins[static_cast<std::size_t>(row * columns + column)].available_area = width * height;
-    }
-  }
+  auto grid = make_grid<CellDensityGrid>(rows, bin_size, "cell density");
+  for_each_bin(grid, [](CellDensityBin &bin, double area) { bin.available_area = area; });
 
   for (const auto &cell : cells) {
     if (!cell.location || cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
       continue;
     if (movable(cell) && !cell.macro)
-      add_overlap(grid, cell_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.movable_area += overlap; });
+      add_overlap(grid, placed_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.movable_area += overlap; });
     else
-      add_overlap(grid, cell_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.available_area -= overlap; });
+      add_overlap(grid, placed_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.available_area -= overlap; });
   }
 
   for (auto &bin : grid.bins)
