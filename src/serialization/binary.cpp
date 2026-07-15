@@ -21,6 +21,7 @@ constexpr std::array<char, 8> MAGIC{'P', 'L', 'A', 'C', 'E', 'B', 'I', 'N'};
 constexpr std::uint64_t MAX_RECORDS = 1'000'000'000;
 constexpr std::uint32_t MAX_STRING = 64 * 1024 * 1024;
 constexpr std::uint32_t MAX_WEIGHTS = 1'000'000;
+constexpr std::size_t IO_BUFFER_SIZE = 256 * 1024;
 
 class BinarySerializer final : public Serializer {
 public:
@@ -38,7 +39,9 @@ public:
 // format is explicitly little-endian, independent of the host architecture.
 class Output {
 public:
-  explicit Output(const std::filesystem::path &path) : stream_(path, std::ios::binary) {
+  explicit Output(const std::filesystem::path &path) {
+    stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
+    stream_.open(path, std::ios::binary);
     if (!stream_) {
       throw Error("cannot create " + path.string());
     }
@@ -86,12 +89,15 @@ public:
   }
 
 private:
+  std::array<char, IO_BUFFER_SIZE> buffer_{};
   std::ofstream stream_;
 };
 
 class Input {
 public:
-  explicit Input(const std::filesystem::path &path) : path_(path), stream_(path, std::ios::binary) {
+  explicit Input(const std::filesystem::path &path) : path_(path) {
+    stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
+    stream_.open(path, std::ios::binary);
     if (!stream_) {
       throw Error("cannot open " + path.string());
     }
@@ -163,6 +169,7 @@ public:
 
 private:
   std::filesystem::path path_;
+  std::array<char, IO_BUFFER_SIZE> buffer_{};
   std::ifstream stream_;
 };
 

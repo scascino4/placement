@@ -5,13 +5,16 @@
 #include "placement/error.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <charconv>
 #include <cmath>
+#include <concepts>
 #include <fstream>
-#include <iomanip>
 #include <limits>
-#include <sstream>
+#include <span>
 #include <string>
+#include <system_error>
 
 namespace placement {
 namespace {
@@ -69,7 +72,9 @@ struct Bounds {
   [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
 };
 
-enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
+enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting, Count };
+
+constexpr auto CELL_CLASS_COUNT = static_cast<std::size_t>(CellClass::Count);
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
   if (cell.macro)
@@ -81,21 +86,120 @@ enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
   return CellClass::Movable;
 }
 
-void write_paths(std::ostream &output, const Board &board, CellClass wanted, std::string_view css_class) {
+class SvgOutput {
+public:
+  explicit SvgOutput(const std::filesystem::path &path) {
+    file_.pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
+    if (!file_.open(path, std::ios::out))
+      throw Error("cannot create " + path.string());
+  }
+
+  SvgOutput &operator<<(std::string_view value) {
+    write(value.data(), value.size());
+    return *this;
+  }
+
+  SvgOutput &operator<<(const std::string &value) { return *this << std::string_view(value); }
+  SvgOutput &operator<<(const char *value) { return *this << std::string_view(value); }
+
+  SvgOutput &operator<<(char value) {
+    write(&value, 1);
+    return *this;
+  }
+
+  template <std::integral T> SvgOutput &operator<<(T value) {
+    std::array<char, 32> encoded{};
+    const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value);
+    if (result.ec != std::errc{})
+      throw Error("failed while formatting SVG integer");
+    write(encoded.data(), static_cast<std::size_t>(result.ptr - encoded.data()));
+    return *this;
+  }
+
+  SvgOutput &operator<<(double value) { return number(value, 12); }
+
+  SvgOutput &number(double value, int precision) {
+    std::array<char, 32> encoded{};
+    const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value, std::chars_format::general, precision);
+    if (result.ec != std::errc{})
+      throw Error("failed while formatting SVG number");
+    write(encoded.data(), static_cast<std::size_t>(result.ptr - encoded.data()));
+    return *this;
+  }
+
+  void finish() {
+    if (file_.pubsync() != 0)
+      throw Error("failed while writing SVG");
+  }
+
+private:
+  void write(const char *data, std::size_t size) {
+    if (file_.sputn(data, static_cast<std::streamsize>(size)) != static_cast<std::streamsize>(size))
+      throw Error("failed while writing SVG");
+  }
+
+  // A larger fixed buffer avoids both a heap allocation and thousands of
+  // small writes for SVGs containing millions of rectangles.
+  std::array<char, 256 * 1024> buffer_{};
+  std::filebuf file_;
+};
+
+class CellGeometry {
+public:
+  CellGeometry(const Board &board, bool include_movable, Bounds *bounds = nullptr) {
+    std::array<std::size_t, CELL_CLASS_COUNT> counts{};
+    for (const auto &cell : board.cells) {
+      if (!cell.location)
+        continue;
+      const auto rect = placed_rectangle(cell);
+      if (bounds)
+        bounds->include(rect);
+      if (rect.width == 0 || rect.height == 0)
+        continue;
+      const auto classification = cell_class(cell);
+      if (include_movable || classification != CellClass::Movable)
+        ++counts[index(classification)];
+    }
+
+    for (std::size_t classification = 0; classification < CELL_CLASS_COUNT; ++classification)
+      offsets_[classification + 1] = offsets_[classification] + counts[classification];
+    rectangles_.resize(offsets_.back());
+    auto positions = offsets_;
+
+    for (const auto &cell : board.cells) {
+      if (!cell.location)
+        continue;
+      const auto rect = placed_rectangle(cell);
+      if (rect.width == 0 || rect.height == 0)
+        continue;
+      const auto classification = cell_class(cell);
+      if (include_movable || classification != CellClass::Movable) {
+        const auto classification_index = index(classification);
+        rectangles_[positions[classification_index]++] = rect;
+      }
+    }
+  }
+
+  [[nodiscard]] std::span<const PlacedRectangle> operator[](CellClass classification) const {
+    const auto classification_index = index(classification);
+    return std::span(rectangles_).subspan(offsets_[classification_index], offsets_[classification_index + 1] - offsets_[classification_index]);
+  }
+
+private:
+  [[nodiscard]] static constexpr std::size_t index(CellClass classification) { return static_cast<std::size_t>(classification); }
+
+  std::vector<PlacedRectangle> rectangles_;
+  std::array<std::size_t, CELL_CLASS_COUNT + 1> offsets_{};
+};
+
+void write_paths(SvgOutput &output, std::span<const PlacedRectangle> rectangles, std::string_view css_class) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
   // viewers to parse on multi-million-cell designs.
   constexpr std::size_t CELLS_PER_PATH = 10'000;
   std::size_t in_path = 0;
 
-  for (const auto &cell : board.cells) {
-    if (!cell.location || cell_class(cell) != wanted)
-      continue;
-
-    const auto rect = placed_rectangle(cell);
-    if (rect.width == 0 || rect.height == 0)
-      continue;
-
+  for (const auto &rect : rectangles) {
     if (in_path == 0)
       output << "    <path class=\"" << css_class << "\" d=\"";
     output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
@@ -113,15 +217,9 @@ void write_paths(std::ostream &output, const Board &board, CellClass wanted, std
 
 template <typename Write> void write_atomic(const std::filesystem::path &path, Write write) {
   detail::atomic_output(path, [&](const auto &temporary) {
-    std::ofstream output(temporary);
-    if (!output)
-      throw Error("cannot create " + path.string());
-
-    output << std::setprecision(12);
+    SvgOutput output(temporary);
     write(output);
-    output.flush();
-    if (!output)
-      throw Error("failed while writing " + path.string());
+    output.finish();
   });
 }
 
@@ -135,9 +233,7 @@ public:
       for (const auto &subrow : row.subrows)
         bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     }
-    for (const auto &cell : board.cells)
-      if (cell.location)
-        bounds.include(placed_rectangle(cell));
+    const CellGeometry cells(board, true, &bounds);
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
 
@@ -148,7 +244,7 @@ public:
     const auto stroke = span / 6000.0;
     const auto &style = rendering_style::palette(options_.dark_mode);
 
-    write_atomic(output_path, [&](std::ostream &output) {
+    write_atomic(output_path, [&](SvgOutput &output) {
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
              << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
              << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
@@ -178,10 +274,10 @@ public:
         }
       }
 
-      write_paths(output, board, CellClass::Movable, "movable");
-      write_paths(output, board, CellClass::Macro, "macro");
-      write_paths(output, board, CellClass::Fixed, "fixed");
-      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni");
+      write_paths(output, cells[CellClass::Movable], "movable");
+      write_paths(output, cells[CellClass::Macro], "macro");
+      write_paths(output, cells[CellClass::Fixed], "fixed");
+      write_paths(output, cells[CellClass::FixedNonInteracting], "fixed-ni");
 
       output << "  </g>\n</svg>\n";
     });
@@ -191,12 +287,11 @@ private:
   RenderOptions options_;
 };
 
-[[nodiscard]] std::string utilization_color(double utilization, const rendering_style::Palette &style) {
+void write_utilization_color(SvgOutput &output, double utilization, const rendering_style::Palette &style) {
   const auto clamped = std::clamp(utilization, 0.0, 1.0);
   const auto hue = 120.0 * (1.0 - clamped);
-  std::ostringstream color;
-  color << "hsl(" << std::setprecision(5) << hue << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
-  return color.str();
+  output << "hsl(";
+  output.number(hue, 5) << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
 }
 
 template <typename Grid> struct DensityPresentation;
@@ -237,7 +332,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   return {core, width, height, options.bin_size.value_or(span / 100.0), span * 0.01, span / 8000.0};
 }
 
-template <typename Grid, typename Function> void write_grid_bins(std::ostream &output, const Grid &grid, Function write_bin) {
+template <typename Grid, typename Function> void write_grid_bins(SvgOutput &output, const Grid &grid, Function write_bin) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
     const auto height = std::min(grid.bin_size, grid.max_y - y);
@@ -252,7 +347,8 @@ template <typename Grid, typename Function> void write_grid_bins(std::ostream &o
 template <typename Grid, typename Description, typename Bins>
 void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
                        Description description, Bins bins, bool movable_overlay) {
-  write_atomic(path, [&](std::ostream &output) {
+  const CellGeometry cells(board, movable_overlay);
+  write_atomic(path, [&](SvgOutput &output) {
     const auto &style = rendering_style::palette(options.dark_mode);
 
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -278,10 +374,10 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
 
     bins(output);
     if (movable_overlay)
-      write_paths(output, board, CellClass::Movable, "movable-overlay");
-    write_paths(output, board, CellClass::Macro, "macro-overlay");
-    write_paths(output, board, CellClass::Fixed, "fixed-overlay");
-    write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
+      write_paths(output, cells[CellClass::Movable], "movable-overlay");
+    write_paths(output, cells[CellClass::Macro], "macro-overlay");
+    write_paths(output, cells[CellClass::Fixed], "fixed-overlay");
+    write_paths(output, cells[CellClass::FixedNonInteracting], "fixed-ni-overlay");
     output << "  </g>\n</svg>\n";
   });
 }
@@ -296,17 +392,21 @@ public:
     const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
                  << "; green is low utilization, red is 100 percent or greater, gray is not placeable";
         },
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           write_grid_bins(
               output, grid,
-              [&](std::ostream &stream, const UtilizationBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
+              [&](SvgOutput &stream, const UtilizationBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
                 const auto utilization = bin.utilization();
-                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\""
-                       << (utilization ? utilization_color(*utilization, style) : style.unavailable) << "\"/>\n";
+                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
+                if (utilization)
+                  write_utilization_color(stream, *utilization, style);
+                else
+                  stream << style.unavailable;
+                stream << "\"/>\n";
               });
         },
         true);
@@ -341,18 +441,22 @@ public:
     const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
                  << color_ceiling << " pins per square placement unit";
         },
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           write_grid_bins(output, grid,
-                          [&](std::ostream &stream, const PinDensityBin &bin, double x, double y, double width, double height, std::uint64_t column,
+                          [&](SvgOutput &stream, const PinDensityBin &bin, double x, double y, double width, double height, std::uint64_t column,
                               std::uint64_t row) {
                             const auto placeable = utilization_grid.at(column, row).utilization().has_value();
                             stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height
-                                   << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling, style) : style.unavailable)
-                                   << "\"><title>" << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
+                                   << "\" fill=\"";
+                            if (placeable)
+                              write_utilization_color(stream, bin.density() / color_ceiling, style);
+                            else
+                              stream << style.unavailable;
+                            stream << "\"><title>" << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
                           });
         },
         true);
@@ -372,18 +476,21 @@ public:
     const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
                  << "; density is movable standard-cell overlap divided by capacity after macros and fixed physical objects are removed";
         },
-        [&](std::ostream &output) {
+        [&](SvgOutput &output) {
           write_grid_bins(
               output, grid,
-              [&](std::ostream &stream, const CellDensityBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
+              [&](SvgOutput &stream, const CellDensityBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
                 const auto density = bin.density();
-                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\""
-                       << (density ? utilization_color(*density, style) : style.unavailable) << "\"><title>" << bin.movable_area
-                       << " movable standard-cell area; " << bin.available_area << " available area; density ";
+                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
+                if (density)
+                  write_utilization_color(stream, *density, style);
+                else
+                  stream << style.unavailable;
+                stream << "\"><title>" << bin.movable_area << " movable standard-cell area; " << bin.available_area << " available area; density ";
                 if (density)
                   stream << *density;
                 else

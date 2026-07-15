@@ -1,7 +1,7 @@
 CXX := clang++
 CLANG_FORMAT ?= clang-format
 CPPFLAGS := -Iinclude
-CXXFLAGS ?= -std=c++23 -O2 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
+CXXFLAGS ?= -std=c++23 -O3 -DNDEBUG -Wall -Wextra -Wpedantic -Wconversion -Wshadow
 DEPFLAGS := -MMD -MP
 
 BUILD_DIR := build
