@@ -42,16 +42,14 @@ public:
   explicit Output(const std::filesystem::path &path) {
     stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
     stream_.open(path, std::ios::binary);
-    if (!stream_) {
+    if (!stream_)
       throw Error("cannot create " + path.string());
-    }
   }
 
   void bytes(const void *data, std::size_t size) {
     stream_.write(static_cast<const char *>(data), static_cast<std::streamsize>(size));
-    if (!stream_) {
+    if (!stream_)
       throw Error("failed while writing binary placement");
-    }
   }
 
   template <std::unsigned_integral T> void integer(T value) {
@@ -66,17 +64,15 @@ public:
   void boolean(bool value) { integer<std::uint8_t>(value); }
 
   void string(std::string_view value) {
-    if (value.size() > MAX_STRING) {
+    if (value.size() > MAX_STRING)
       throw Error("string exceeds binary format limit");
-    }
     integer(static_cast<std::uint32_t>(value.size()));
     bytes(value.data(), value.size());
   }
 
   void weights(const std::vector<double> &values) {
-    if (values.size() > MAX_WEIGHTS) {
+    if (values.size() > MAX_WEIGHTS)
       throw Error("weight vector exceeds binary format limit");
-    }
     integer(static_cast<std::uint32_t>(values.size()));
     for (const auto value : values)
       real(value);
@@ -98,9 +94,8 @@ public:
   explicit Input(const std::filesystem::path &path) : path_(path) {
     stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
     stream_.open(path, std::ios::binary);
-    if (!stream_) {
+    if (!stream_)
       throw Error("cannot open " + path.string());
-    }
   }
 
   void bytes(void *data, std::size_t size) {
@@ -122,9 +117,8 @@ public:
 
   [[nodiscard]] std::string string() {
     const auto size = integer<std::uint32_t>();
-    if (size > MAX_STRING) {
+    if (size > MAX_STRING)
       throw Error(path_.string() + ": invalid string length");
-    }
     std::string value(size, '\0');
     bytes(value.data(), value.size());
     return value;
@@ -132,9 +126,8 @@ public:
 
   [[nodiscard]] std::vector<double> weights() {
     const auto size = integer<std::uint32_t>();
-    if (size > MAX_WEIGHTS) {
+    if (size > MAX_WEIGHTS)
       throw Error(path_.string() + ": invalid weight count");
-    }
     std::vector<double> values(size);
     for (auto &value : values)
       value = real();
@@ -157,12 +150,10 @@ public:
 
   void require_end() {
     char byte{};
-    if (stream_.read(&byte, 1)) {
+    if (stream_.read(&byte, 1))
       throw Error(path_.string() + ": trailing binary data");
-    }
-    if (!stream_.eof()) {
+    if (!stream_.eof())
       throw Error(path_.string() + ": failed while reading binary placement");
-    }
   }
 
   [[nodiscard]] const std::filesystem::path &path() const { return path_; }
@@ -305,9 +296,8 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     row.site_orientation = reader.enumeration<Orientation>(7, "row orientation");
 
     row.symmetry = reader.integer<std::uint8_t>();
-    if (row.symmetry > 7) {
+    if (row.symmetry > 7)
       throw Error(input.string() + ": invalid row symmetry");
-    }
 
     const auto subrow_count = reader.integer<std::uint64_t>();
     check_count(subrow_count, reader, "subrow");
@@ -332,9 +322,8 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     Pin pin;
 
     pin.cell = reader.integer<std::uint32_t>();
-    if (pin.cell >= cell_count) {
+    if (pin.cell >= cell_count)
       throw Error(input.string() + ": pin cell index is out of bounds");
-    }
 
     pin.direction = reader.enumeration<PinDirection>(3, "pin direction");
     pin.offset_x = reader.real();

@@ -1,2 +1,3 @@
 BasedOnStyle: LLVM
+RemoveBracesLLVM: true
 ColumnLimit: 150

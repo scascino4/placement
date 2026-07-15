@@ -142,10 +142,9 @@ private:
 };
 
 void include_cell_bounds(const Board &board, Bounds &bounds) {
-  for (const auto &cell : board.cells) {
+  for (const auto &cell : board.cells)
     if (cell.location)
       bounds.include(placed_rectangle(cell));
-  }
 }
 
 void write_paths(SvgOutput &output, const Board &board, CellClass classification, std::string_view css_class) {
@@ -191,10 +190,9 @@ public:
 
   void render(const Board &board, const std::filesystem::path &output_path) const override {
     Bounds bounds;
-    for (const auto &row : board.rows) {
+    for (const auto &row : board.rows)
       for (const auto &subrow : row.subrows)
         bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-    }
     include_cell_bounds(board, bounds);
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
@@ -281,10 +279,9 @@ template <typename Grid> struct DensityLayout {
 
 template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &options) {
   Bounds core;
-  for (const auto &row : board.rows) {
+  for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
       core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-  }
   if (core.empty())
     throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
 

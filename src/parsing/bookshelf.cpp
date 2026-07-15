@@ -53,9 +53,8 @@ void tokens(const std::string &line, std::vector<std::string_view> &result) {
 class Lines {
 public:
   explicit Lines(const std::filesystem::path &path) : path_(path), input_(path) {
-    if (!input_) {
+    if (!input_)
       throw Error("cannot open " + path.string());
-    }
   }
 
   bool next(std::string &line) {
@@ -63,14 +62,12 @@ public:
       ++number_;
 
       const auto comment = line.find('#');
-      if (comment != std::string::npos) {
+      if (comment != std::string::npos)
         line.erase(comment);
-      }
 
       trim(line);
-      if (!line.empty()) {
+      if (!line.empty())
         return true;
-      }
     }
 
     return false;
@@ -93,9 +90,8 @@ template <typename T> [[nodiscard]] T number(std::string_view token, const Lines
   const auto *begin = token.data();
   const auto *end = begin + token.size();
   const auto [ptr, error] = std::from_chars(begin, end, value);
-  if (error != std::errc{} || ptr != end) {
+  if (error != std::errc{} || ptr != end)
     lines.fail("invalid " + std::string(description) + " '" + std::string(token) + "'");
-  }
   if constexpr (std::is_floating_point_v<T>) {
     if (!std::isfinite(value))
       lines.fail("non-finite " + std::string(description) + " is not allowed");
@@ -146,13 +142,11 @@ template <typename T> [[nodiscard]] T number(std::string_view token, const Lines
 void require_header(Lines &lines, std::string_view expected) {
   std::string line;
   std::vector<std::string_view> fields;
-  if (!lines.next(line)) {
+  if (!lines.next(line))
     lines.fail("empty component file");
-  }
   tokens(line, fields);
-  if (fields.size() < 3 || lower(fields[0]) != "ucla" || lower(fields[1]) != expected) {
+  if (fields.size() < 3 || lower(fields[0]) != "ucla" || lower(fields[1]) != expected)
     lines.fail("expected 'UCLA " + std::string(expected) + " <version>' header");
-  }
 }
 
 struct Components {
@@ -168,19 +162,16 @@ struct Components {
   std::string line;
   std::vector<std::string_view> fields;
 
-  if (!lines.next(line)) {
+  if (!lines.next(line))
     lines.fail("empty AUX manifest");
-  }
 
   tokens(line, fields);
-  if (fields.size() < 3 || fields[1] != ":") {
+  if (fields.size() < 3 || fields[1] != ":")
     lines.fail("expected '<format> : <component files>'");
-  }
 
   const auto format = lower(fields[0]);
-  if (format != "rowbasedplacement" && format != "stdcellplacement") {
+  if (format != "rowbasedplacement" && format != "stdcellplacement")
     lines.fail("unsupported AUX format '" + std::string(fields[0]) + "'");
-  }
 
   Components components;
   std::unordered_set<std::string> suffixes;
@@ -188,9 +179,8 @@ struct Components {
     const std::filesystem::path component(fields[i]);
 
     const auto suffix = lower(component.extension().string());
-    if (!suffixes.insert(suffix).second) {
+    if (!suffixes.insert(suffix).second)
       lines.fail("duplicate component suffix '" + suffix + "'");
-    }
 
     const auto resolved = path.parent_path() / component;
     if (suffix == ".nodes")
@@ -207,9 +197,8 @@ struct Components {
       lines.fail("unsupported component suffix '" + suffix + "'");
   }
 
-  if (components.nodes.empty() || components.nets.empty() || components.placement.empty() || components.rows.empty()) {
+  if (components.nodes.empty() || components.nets.empty() || components.placement.empty() || components.rows.empty())
     lines.fail("manifest requires .nodes, .nets, .pl, and .scl components");
-  }
 
   return components;
 }

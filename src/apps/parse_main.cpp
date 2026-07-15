@@ -34,15 +34,14 @@ int main(int argc, char **argv) {
       if (arg >= argc)
         throw placement::Error(std::string(option) + " requires a value");
 
-      if (option == "--input-format") {
+      if (option == "--input-format")
         input_format = argv[arg++];
-      } else if (option == "--placement-file") {
+      else if (option == "--placement-file")
         placement_override = argv[arg++];
-      } else if (option == "--serialization-format") {
+      else if (option == "--serialization-format")
         serialization_format = argv[arg++];
-      } else {
+      else
         throw placement::Error("unknown option '" + std::string(option) + "'");
-      }
     }
 
     if (argc - arg != 2) {

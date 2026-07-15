@@ -103,10 +103,9 @@ void validate(const PlacedRectangle &rect) {
 
 [[nodiscard]] Bounds placement_bounds(const std::vector<Row> &rows) {
   Bounds bounds;
-  for (const auto &row : rows) {
+  for (const auto &row : rows)
     for (const auto &subrow : row.subrows)
       bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-  }
   return bounds;
 }
 
@@ -227,10 +226,9 @@ const CellDensityBin &CellDensityGrid::at(std::uint64_t column, std::uint64_t ro
 UtilizationGrid Board::utilization(double bin_size) const {
   auto grid = make_grid<UtilizationGrid>(rows, bin_size);
 
-  for (const auto &row : rows) {
+  for (const auto &row : rows)
     for (const auto &subrow : row.subrows)
       add_overlap(grid, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height}, Area::Placeable);
-  }
 
   std::vector<std::size_t> row_order(rows.size());
   std::iota(row_order.begin(), row_order.end(), 0);
