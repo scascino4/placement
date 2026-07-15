@@ -1,4 +1,5 @@
 #include "placement/rendering/renderer.hpp"
+#include "placement/rendering/style.hpp"
 
 #include "../atomic_output.hpp"
 #include "placement/error.hpp"
@@ -14,8 +15,6 @@
 
 namespace placement {
 namespace {
-
-constexpr std::string_view background_color(bool dark_mode) { return dark_mode ? "#D3D3D3" : "#2C2C2C"; }
 
 [[nodiscard]] std::string lower(std::string_view value) {
   std::string result(value);
@@ -147,6 +146,7 @@ public:
     const auto span = std::max(width, height);
     const auto padding = span * 0.01;
     const auto stroke = span / 6000.0;
+    const auto &style = rendering_style::palette(options_.dark_mode);
 
     write_atomic(output_path, [&](std::ostream &output) {
       output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -155,18 +155,13 @@ public:
              << "  <title>" << escape(board.name) << " placement</title>\n"
              << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, " << board.nets.size() << " nets</desc>\n";
 
-      output << "  <style>\n";
-      if (options_.dark_mode)
-        output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#1e293b;stroke:#64748b;stroke-width:" << stroke
-               << "}.movable{fill:#60a5fa;stroke:none}.macro{fill:#ffffff;stroke:#cbd5e1;stroke-width:" << stroke
-               << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#fbbf24;stroke:#fde68a;stroke-width:" << stroke
-               << "}\n";
-      else
-        output << "    .background{fill:" << background_color(options_.dark_mode) << "}.row{fill:#e2e8f0;stroke:#94a3b8;stroke-width:" << stroke
-               << "}.movable{fill:#3b82f6;stroke:none}.macro{fill:#ffffff;stroke:#1f2937;stroke-width:" << stroke
-               << "}.fixed{fill:#ffffff;stroke:#ffffff;stroke-width:" << stroke << "}.fixed-ni{fill:#f59e0b;stroke:#78350f;stroke-width:" << stroke
-               << "}\n";
-      output << "  </style>\n";
+      output << "  <style>\n"
+             << "    .background{fill:" << style.background << "}.row{fill:" << style.row_fill << ";stroke:" << style.row_stroke
+             << ";stroke-width:" << stroke << "}.movable{fill:" << style.movable_fill << ";stroke:none}.macro{fill:" << style.macro_fill
+             << ";stroke:" << style.macro_stroke << ";stroke-width:" << stroke << "}.fixed{fill:" << style.fixed_fill
+             << ";stroke:" << style.fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni{fill:" << style.fixed_non_interacting_fill
+             << ";stroke:" << style.fixed_non_interacting_stroke << ";stroke-width:" << stroke << "}\n"
+             << "  </style>\n";
 
       output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
              << height + 2 * padding << "\"/>\n";
@@ -196,11 +191,11 @@ private:
   RenderOptions options_;
 };
 
-[[nodiscard]] std::string utilization_color(double utilization, bool dark_mode) {
+[[nodiscard]] std::string utilization_color(double utilization, const rendering_style::Palette &style) {
   const auto clamped = std::clamp(utilization, 0.0, 1.0);
   const auto hue = 120.0 * (1.0 - clamped);
   std::ostringstream color;
-  color << "hsl(" << std::setprecision(5) << hue << (dark_mode ? " 78% 56%)" : " 72% 48%)");
+  color << "hsl(" << std::setprecision(5) << hue << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
   return color.str();
 }
 
@@ -258,11 +253,7 @@ template <typename Grid, typename Description, typename Bins>
 void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
                        Description description, Bins bins, bool movable_overlay) {
   write_atomic(path, [&](std::ostream &output) {
-    const auto background = background_color(options.dark_mode);
-    const auto surface = options.dark_mode ? "#0f172a" : "#f8fafc";
-    const auto grid_stroke = options.dark_mode ? "#0f172a" : "#ffffff";
-    const auto fixed_stroke = options.dark_mode ? "#cbd5e1" : "#1f2937";
-    const auto fixed_ni_stroke = options.dark_mode ? "#94a3b8" : "#334155";
+    const auto &style = rendering_style::palette(options.dark_mode);
 
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
            << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -layout.padding << ' ' << -layout.padding << ' '
@@ -272,12 +263,14 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
     description(output);
     output << "</desc>\n"
            << "  <style>\n"
-           << "    .background{fill:" << background << "}.bin{stroke:" << grid_stroke << ";stroke-opacity:.38;stroke-width:" << layout.stroke << '}';
+           << "    .background{fill:" << style.background << "}.bin{stroke:" << style.grid_stroke
+           << ";stroke-opacity:.38;stroke-width:" << layout.stroke << '}';
     if (movable_overlay)
-      output << ".movable-overlay{fill:" << surface << ";fill-opacity:.42;stroke:none}";
-    output << ".macro-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << layout.stroke << "}"
-           << ".fixed-overlay{fill:" << surface << ";stroke:" << fixed_stroke << ";stroke-width:" << layout.stroke
-           << "}.fixed-ni-overlay{fill:" << surface << ";stroke:" << fixed_ni_stroke << ";stroke-width:" << layout.stroke << "}\n"
+      output << ".movable-overlay{fill:" << style.surface << ";fill-opacity:.42;stroke:none}";
+    output << ".macro-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke << "}"
+           << ".fixed-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke
+           << "}.fixed-ni-overlay{fill:" << style.surface << ";stroke:" << style.non_interacting_overlay_stroke << ";stroke-width:" << layout.stroke
+           << "}\n"
            << "  </style>\n"
            << "  <rect class=\"background\" x=\"" << -layout.padding << "\" y=\"" << -layout.padding << "\" width=\""
            << layout.width + 2 * layout.padding << "\" height=\"" << layout.height + 2 * layout.padding << "\"/>\n"
@@ -300,7 +293,7 @@ public:
   void render(const Board &board, const std::filesystem::path &output_path) const override {
     const auto layout = density_layout<UtilizationGrid>(board, options_);
     const auto grid = board.utilization(layout.bin_size);
-    const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
+    const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
         [&](std::ostream &output) {
@@ -313,7 +306,7 @@ public:
               [&](std::ostream &stream, const UtilizationBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
                 const auto utilization = bin.utilization();
                 stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\""
-                       << (utilization ? utilization_color(*utilization, options_.dark_mode) : unavailable) << "\"/>\n";
+                       << (utilization ? utilization_color(*utilization, style) : style.unavailable) << "\"/>\n";
               });
         },
         true);
@@ -345,7 +338,7 @@ public:
       color_ceiling = nonzero_densities[percentile_index];
     }
 
-    const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
+    const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
         [&](std::ostream &output) {
@@ -358,7 +351,7 @@ public:
                               std::uint64_t row) {
                             const auto placeable = utilization_grid.at(column, row).utilization().has_value();
                             stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height
-                                   << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling, options_.dark_mode) : unavailable)
+                                   << "\" fill=\"" << (placeable ? utilization_color(bin.density() / color_ceiling, style) : style.unavailable)
                                    << "\"><title>" << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
                           });
         },
@@ -376,7 +369,7 @@ public:
   void render(const Board &board, const std::filesystem::path &output_path) const override {
     const auto layout = density_layout<CellDensityGrid>(board, options_);
     const auto grid = board.cell_density(layout.bin_size);
-    const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
+    const auto &style = rendering_style::palette(options_.dark_mode);
     write_density_svg(
         output_path, board, options_, layout,
         [&](std::ostream &output) {
@@ -389,7 +382,7 @@ public:
               [&](std::ostream &stream, const CellDensityBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
                 const auto density = bin.density();
                 stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\""
-                       << (density ? utilization_color(*density, options_.dark_mode) : unavailable) << "\"><title>" << bin.movable_area
+                       << (density ? utilization_color(*density, style) : style.unavailable) << "\"><title>" << bin.movable_area
                        << " movable standard-cell area; " << bin.available_area << " available area; density ";
                 if (density)
                   stream << *density;

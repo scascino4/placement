@@ -1,6 +1,7 @@
 #include "placement/error.hpp"
 #include "placement/parsing/parser.hpp"
 #include "placement/rendering/renderer.hpp"
+#include "placement/rendering/style.hpp"
 #include "placement/serialization/serializer.hpp"
 
 #include <chrono>
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
@@ -44,6 +46,13 @@ void write(const std::filesystem::path &path, std::string_view contents) {
 [[nodiscard]] std::string read(const std::filesystem::path &path) {
   std::ifstream input(path, std::ios::binary);
   return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+[[nodiscard]] bool contains_parts(std::string_view contents, std::initializer_list<std::string_view> parts) {
+  std::string expected;
+  for (const auto part : parts)
+    expected += part;
+  return contents.find(expected) != std::string_view::npos;
 }
 
 void fixture(const std::filesystem::path &directory) {
@@ -325,6 +334,11 @@ void cell_density_test() {
 }
 
 void svg_test() {
+  const auto &default_style = placement::rendering_style::default_palette;
+  const auto &dark_mode_style = placement::rendering_style::dark_mode_palette;
+  check(&placement::rendering_style::palette(false) == &default_style && &placement::rendering_style::palette(true) == &dark_mode_style,
+        "rendering mode selects the common palette");
+
   TemporaryDirectory temporary;
   fixture(temporary.path());
   auto board = parse_fixture(temporary.path());
@@ -343,8 +357,8 @@ void svg_test() {
   check(contents.find("class=\"movable\"") != std::string::npos && contents.find("class=\"macro\"") != std::string::npos &&
             contents.find("class=\"fixed-ni\"") != std::string::npos,
         "SVG cell classes");
-  check(contents.find(".background{fill:#2C2C2C}") != std::string::npos, "default placement SVG background is charcoal");
-  check(contents.find(".macro{fill:#ffffff;stroke:#1f2937") != std::string::npos,
+  check(contains_parts(contents, {".background{fill:", default_style.background, "}"}), "default placement SVG background is charcoal");
+  check(contains_parts(contents, {".macro{fill:", default_style.macro_fill, ";stroke:", default_style.macro_stroke}),
         "light placement SVG macros have contrasting outlines");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
 
@@ -352,29 +366,32 @@ void svg_test() {
   const auto dark_svg = temporary.path() / "tiny-dark.svg";
   dark_renderer->render(board, dark_svg);
   const auto dark_contents = read(dark_svg);
-  check(dark_contents.find(".background{fill:#D3D3D3}") != std::string::npos && dark_contents.find(".movable{fill:#60a5fa") != std::string::npos &&
-            dark_contents.find(".macro{fill:#ffffff;stroke:#cbd5e1") != std::string::npos,
+  check(contains_parts(dark_contents, {".background{fill:", dark_mode_style.background, "}"}) &&
+            contains_parts(dark_contents, {".movable{fill:", dark_mode_style.movable_fill}) &&
+            contains_parts(dark_contents, {".macro{fill:", dark_mode_style.macro_fill, ";stroke:", dark_mode_style.macro_stroke}),
         "dark placement SVG palette");
-  check(contents.find("#0f172a") == std::string::npos, "light placement SVG remains the default");
+  check(contents.find(dark_mode_style.surface) == std::string::npos, "light placement SVG remains the default");
 
   auto utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0});
   const auto utilization_svg = temporary.path() / "utilization.svg";
   utilization_renderer->render(board, utilization_svg);
   const auto utilization_contents = read(utilization_svg);
   check(utilization_contents.find("tiny &lt;&amp;&gt; utilization") != std::string::npos, "utilization SVG title");
-  check(utilization_contents.find(".background{fill:#2C2C2C}") != std::string::npos, "utilization SVG background is charcoal");
+  check(contains_parts(utilization_contents, {".background{fill:", default_style.background, "}"}), "utilization SVG background is charcoal");
   check(utilization_contents.find("class=\"bin\"") != std::string::npos && utilization_contents.find("macro-overlay") != std::string::npos,
         "utilization SVG bins and macros");
-  check(utilization_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
-            utilization_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+  check(contains_parts(utilization_contents, {".macro-overlay{fill:", default_style.surface}) &&
+            contains_parts(utilization_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "utilization SVG macros mask bin colors");
 
   auto dark_utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_utilization_svg = temporary.path() / "utilization-dark.svg";
   dark_utilization_renderer->render(board, dark_utilization_svg);
   const auto dark_utilization_contents = read(dark_utilization_svg);
-  check(dark_utilization_contents.find(".background{fill:#D3D3D3}") != std::string::npos &&
-            dark_utilization_contents.find("hsl(120 78% 56%)") != std::string::npos,
+  const auto dark_green = std::string("hsl(120 ") + std::to_string(dark_mode_style.heatmap_saturation_percent) + "% " +
+                          std::to_string(dark_mode_style.heatmap_lightness_percent) + "%)";
+  check(contains_parts(dark_utilization_contents, {".background{fill:", dark_mode_style.background, "}"}) &&
+            dark_utilization_contents.find(dark_green) != std::string::npos,
         "dark utilization SVG palette");
 
   auto pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0});
@@ -382,21 +399,21 @@ void svg_test() {
   pin_density_renderer->render(board, pin_density_svg);
   const auto pin_density_contents = read(pin_density_svg);
   check(pin_density_contents.find("tiny &lt;&amp;&gt; pin density") != std::string::npos, "pin density SVG title");
-  check(pin_density_contents.find(".background{fill:#2C2C2C}") != std::string::npos, "pin density SVG background is charcoal");
+  check(contains_parts(pin_density_contents, {".background{fill:", default_style.background, "}"}), "pin density SVG background is charcoal");
   check(pin_density_contents.find("class=\"bin\"") != std::string::npos && pin_density_contents.find("pins; density") != std::string::npos,
         "pin density SVG bins and tooltips");
-  check(pin_density_contents.find(".movable-overlay{fill:#f8fafc;fill-opacity:.42") != std::string::npos &&
-            pin_density_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
-            pin_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+  check(contains_parts(pin_density_contents, {".movable-overlay{fill:", default_style.surface, ";fill-opacity:.42"}) &&
+            contains_parts(pin_density_contents, {".macro-overlay{fill:", default_style.surface}) &&
+            contains_parts(pin_density_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "pin density SVG masks macros consistently with utilization");
 
   auto dark_pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_pin_density_svg = temporary.path() / "pin-density-dark.svg";
   dark_pin_density_renderer->render(board, dark_pin_density_svg);
   const auto dark_pin_density_contents = read(dark_pin_density_svg);
-  check(dark_pin_density_contents.find(".background{fill:#D3D3D3}") != std::string::npos &&
-            dark_pin_density_contents.find(".movable-overlay{fill:#0f172a;fill-opacity:.42") != std::string::npos &&
-            dark_pin_density_contents.find("stroke:#cbd5e1") != std::string::npos,
+  check(contains_parts(dark_pin_density_contents, {".background{fill:", dark_mode_style.background, "}"}) &&
+            contains_parts(dark_pin_density_contents, {".movable-overlay{fill:", dark_mode_style.surface, ";fill-opacity:.42"}) &&
+            contains_parts(dark_pin_density_contents, {"stroke:", dark_mode_style.overlay_stroke}),
         "dark pin density SVG palette");
 
   auto cell_density_renderer = placement::make_renderer("cell-density-svg", {.bin_size = 5.0});
@@ -408,19 +425,19 @@ void svg_test() {
             cell_density_contents.find("movable standard-cell area;") != std::string::npos &&
             cell_density_contents.find("available area; density") != std::string::npos,
         "cell density SVG bins and tooltips");
-  check(cell_density_contents.find(".macro-overlay{fill:#f8fafc") != std::string::npos &&
+  check(contains_parts(cell_density_contents, {".macro-overlay{fill:", default_style.surface}) &&
             cell_density_contents.find("class=\"macro-overlay\"") != std::string::npos &&
-            cell_density_contents.find(".fixed-ni-overlay{fill:#f8fafc") != std::string::npos,
+            contains_parts(cell_density_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "cell density SVG masks macros and non-interacting objects");
 
   auto dark_cell_density_renderer = placement::make_renderer("cell-density-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_cell_density_svg = temporary.path() / "cell-density-dark.svg";
   dark_cell_density_renderer->render(board, dark_cell_density_svg);
   const auto dark_cell_density_contents = read(dark_cell_density_svg);
-  check(dark_cell_density_contents.find(".background{fill:#D3D3D3}") != std::string::npos &&
-            dark_cell_density_contents.find(".macro-overlay{fill:#0f172a") != std::string::npos &&
-            dark_cell_density_contents.find(".fixed-ni-overlay{fill:#0f172a") != std::string::npos &&
-            dark_cell_density_contents.find("stroke:#cbd5e1") != std::string::npos,
+  check(contains_parts(dark_cell_density_contents, {".background{fill:", dark_mode_style.background, "}"}) &&
+            contains_parts(dark_cell_density_contents, {".macro-overlay{fill:", dark_mode_style.surface}) &&
+            contains_parts(dark_cell_density_contents, {".fixed-ni-overlay{fill:", dark_mode_style.surface}) &&
+            contains_parts(dark_cell_density_contents, {"stroke:", dark_mode_style.overlay_stroke}),
         "dark cell density SVG palette");
 
   placement::Board empty;

@@ -109,7 +109,9 @@ outputs manageable. Connectivity
 is retained in the binary but is intentionally not drawn in this first
 renderer. Light colors on a charcoal background are used by default; pass
 `--dark-mode` to any SVG output format for the alternate palette on a light
-background.
+background. Shared renderer palette tokens are defined in
+`include/placement/rendering/style.hpp` so renderers and output tests use the
+same semantic colors.
 
 The `utilization-svg` renderer divides the placement region into square bins
 and colors them from green (low utilization) through yellow to red (100% or
