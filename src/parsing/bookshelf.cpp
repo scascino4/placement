@@ -85,7 +85,8 @@ private:
   std::uint64_t number_{};
 };
 
-template <typename T> [[nodiscard]] T number(std::string_view token, const Lines &lines, std::string_view description) {
+template <typename T>
+[[nodiscard]] T number(std::string_view token, const Lines &lines, std::string_view description) {
   T value{};
   const auto *begin = token.data();
   const auto *end = begin + token.size();
@@ -274,7 +275,8 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
     lines.fail("NumTerminals does not match parsed terminal records");
 }
 
-template <typename Record> class NameIndex {
+template <typename Record>
+class NameIndex {
 public:
   NameIndex(const std::vector<Record> &records, const std::filesystem::path &path, std::string_view kind) : records_(records) {
     if (records.size() >= EMPTY)

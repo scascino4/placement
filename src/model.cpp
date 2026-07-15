@@ -93,7 +93,8 @@ struct Bounds {
   return {rect.x + rect.width / 2.0 + x, rect.y + rect.height / 2.0 + y};
 }
 
-enum class Area { Movable, Placeable };
+enum class Area { Movable,
+                  Placeable };
 
 void validate(const PlacedRectangle &rect) {
   if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0 ||
@@ -109,21 +110,26 @@ void validate(const PlacedRectangle &rect) {
   return bounds;
 }
 
-template <typename Grid> struct GridTraits;
+template <typename Grid>
+struct GridTraits;
 
-template <> struct GridTraits<UtilizationGrid> {
+template <>
+struct GridTraits<UtilizationGrid> {
   static constexpr std::string_view kind = "utilization";
 };
 
-template <> struct GridTraits<PinDensityGrid> {
+template <>
+struct GridTraits<PinDensityGrid> {
   static constexpr std::string_view kind = "pin density";
 };
 
-template <> struct GridTraits<CellDensityGrid> {
+template <>
+struct GridTraits<CellDensityGrid> {
   static constexpr std::string_view kind = "cell density";
 };
 
-template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size) {
+template <typename Grid>
+[[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size) {
   constexpr auto kind = GridTraits<Grid>::kind;
   if (!std::isfinite(bin_size) || bin_size <= 0)
     throw Error(std::string(kind) + " bin size must be finite and positive");
@@ -142,7 +148,8 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
   return grid;
 }
 
-template <typename Grid, typename Function> void for_each_bin(Grid &grid, Function function) {
+template <typename Grid, typename Function>
+void for_each_bin(Grid &grid, Function function) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto height = std::min(grid.bin_size, grid.max_y - (grid.min_y + static_cast<double>(row) * grid.bin_size));
     for (std::uint64_t column = 0; column < grid.columns; ++column) {
@@ -152,13 +159,15 @@ template <typename Grid, typename Function> void for_each_bin(Grid &grid, Functi
   }
 }
 
-template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row) {
+template <typename Grid>
+[[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row) {
   if (column >= grid.columns || row >= grid.rows)
     throw Error(std::string(GridTraits<Grid>::kind) + " bin index is out of bounds");
   return grid.bins[static_cast<std::size_t>(row * grid.columns + column)];
 }
 
-template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const PlacedRectangle &rect, Accumulate accumulate) {
+template <typename Grid, typename Accumulate>
+void add_overlap(Grid &grid, const PlacedRectangle &rect, Accumulate accumulate) {
   validate(rect);
   if (rect.width == 0 || rect.height == 0)
     return;
