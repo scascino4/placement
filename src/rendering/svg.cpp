@@ -12,7 +12,6 @@
 #include <concepts>
 #include <fstream>
 #include <limits>
-#include <span>
 #include <string>
 #include <system_error>
 
@@ -72,9 +71,7 @@ struct Bounds {
   [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
 };
 
-enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting, Count };
-
-constexpr auto CELL_CLASS_COUNT = static_cast<std::size_t>(CellClass::Count);
+enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
   if (cell.macro)
@@ -144,62 +141,27 @@ private:
   std::filebuf file_;
 };
 
-class CellGeometry {
-public:
-  CellGeometry(const Board &board, bool include_movable, Bounds *bounds = nullptr) {
-    std::array<std::size_t, CELL_CLASS_COUNT> counts{};
-    for (const auto &cell : board.cells) {
-      if (!cell.location)
-        continue;
-      const auto rect = placed_rectangle(cell);
-      if (bounds)
-        bounds->include(rect);
-      if (rect.width == 0 || rect.height == 0)
-        continue;
-      const auto classification = cell_class(cell);
-      if (include_movable || classification != CellClass::Movable)
-        ++counts[index(classification)];
-    }
-
-    for (std::size_t classification = 0; classification < CELL_CLASS_COUNT; ++classification)
-      offsets_[classification + 1] = offsets_[classification] + counts[classification];
-    rectangles_.resize(offsets_.back());
-    auto positions = offsets_;
-
-    for (const auto &cell : board.cells) {
-      if (!cell.location)
-        continue;
-      const auto rect = placed_rectangle(cell);
-      if (rect.width == 0 || rect.height == 0)
-        continue;
-      const auto classification = cell_class(cell);
-      if (include_movable || classification != CellClass::Movable) {
-        const auto classification_index = index(classification);
-        rectangles_[positions[classification_index]++] = rect;
-      }
-    }
+void include_cell_bounds(const Board &board, Bounds &bounds) {
+  for (const auto &cell : board.cells) {
+    if (cell.location)
+      bounds.include(placed_rectangle(cell));
   }
+}
 
-  [[nodiscard]] std::span<const PlacedRectangle> operator[](CellClass classification) const {
-    const auto classification_index = index(classification);
-    return std::span(rectangles_).subspan(offsets_[classification_index], offsets_[classification_index + 1] - offsets_[classification_index]);
-  }
-
-private:
-  [[nodiscard]] static constexpr std::size_t index(CellClass classification) { return static_cast<std::size_t>(classification); }
-
-  std::vector<PlacedRectangle> rectangles_;
-  std::array<std::size_t, CELL_CLASS_COUNT + 1> offsets_{};
-};
-
-void write_paths(SvgOutput &output, std::span<const PlacedRectangle> rectangles, std::string_view css_class) {
+void write_paths(SvgOutput &output, const Board &board, CellClass classification, std::string_view css_class) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
-  // viewers to parse on multi-million-cell designs.
+  // viewers to parse on multi-million-cell designs. Filtering directly from
+  // the model avoids duplicating every placed rectangle in a temporary array.
   constexpr std::size_t CELLS_PER_PATH = 10'000;
   std::size_t in_path = 0;
 
-  for (const auto &rect : rectangles) {
+  for (const auto &cell : board.cells) {
+    if (!cell.location || cell_class(cell) != classification)
+      continue;
+    const auto rect = placed_rectangle(cell);
+    if (rect.width == 0 || rect.height == 0)
+      continue;
     if (in_path == 0)
       output << "    <path class=\"" << css_class << "\" d=\"";
     output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
@@ -233,7 +195,7 @@ public:
       for (const auto &subrow : row.subrows)
         bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     }
-    const CellGeometry cells(board, true, &bounds);
+    include_cell_bounds(board, bounds);
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
 
@@ -274,10 +236,10 @@ public:
         }
       }
 
-      write_paths(output, cells[CellClass::Movable], "movable");
-      write_paths(output, cells[CellClass::Macro], "macro");
-      write_paths(output, cells[CellClass::Fixed], "fixed");
-      write_paths(output, cells[CellClass::FixedNonInteracting], "fixed-ni");
+      write_paths(output, board, CellClass::Movable, "movable");
+      write_paths(output, board, CellClass::Macro, "macro");
+      write_paths(output, board, CellClass::Fixed, "fixed");
+      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni");
 
       output << "  </g>\n</svg>\n";
     });
@@ -347,7 +309,6 @@ template <typename Grid, typename Function> void write_grid_bins(SvgOutput &outp
 template <typename Grid, typename Description, typename Bins>
 void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
                        Description description, Bins bins, bool movable_overlay) {
-  const CellGeometry cells(board, movable_overlay);
   write_atomic(path, [&](SvgOutput &output) {
     const auto &style = rendering_style::palette(options.dark_mode);
 
@@ -374,10 +335,10 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
 
     bins(output);
     if (movable_overlay)
-      write_paths(output, cells[CellClass::Movable], "movable-overlay");
-    write_paths(output, cells[CellClass::Macro], "macro-overlay");
-    write_paths(output, cells[CellClass::Fixed], "fixed-overlay");
-    write_paths(output, cells[CellClass::FixedNonInteracting], "fixed-ni-overlay");
+      write_paths(output, board, CellClass::Movable, "movable-overlay");
+    write_paths(output, board, CellClass::Macro, "macro-overlay");
+    write_paths(output, board, CellClass::Fixed, "fixed-overlay");
+    write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
     output << "  </g>\n</svg>\n";
   });
 }

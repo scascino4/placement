@@ -3,35 +3,41 @@
 #include "placement/error.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <charconv>
 #include <cmath>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_map>
 #include <unordered_set>
 
 namespace placement {
 namespace {
 
-[[nodiscard]] std::string trim(std::string_view text) {
+void trim(std::string &text) {
   const auto first = text.find_first_not_of(" \t\r\n");
   if (first == std::string_view::npos) {
-    return {};
+    text.clear();
+    return;
   }
   const auto last = text.find_last_not_of(" \t\r\n");
-  return std::string(text.substr(first, last - first + 1));
+  if (last + 1 < text.size())
+    text.resize(last + 1);
+  if (first != 0)
+    text.erase(0, first);
 }
 
-[[nodiscard]] std::vector<std::string_view> tokens(const std::string &line) {
+void tokens(const std::string &line, std::vector<std::string_view> &result) {
   // Views avoid copying every field. Callers consume them before `line` is
-  // changed by the next read.
-  std::vector<std::string_view> result;
+  // changed by the next read. Reusing the vector also avoids an allocation
+  // for every record in multi-million-line benchmark files.
+  result.clear();
   std::size_t pos = 0;
   while (pos < line.size()) {
     pos = line.find_first_not_of(" \t\r\n", pos);
@@ -42,7 +48,6 @@ namespace {
     result.emplace_back(line.data() + pos, (end == std::string::npos ? line.size() : end) - pos);
     pos = end == std::string::npos ? line.size() : end;
   }
-  return result;
 }
 
 class Lines {
@@ -62,7 +67,7 @@ public:
         line.erase(comment);
       }
 
-      line = trim(line);
+      trim(line);
       if (!line.empty()) {
         return true;
       }
@@ -140,10 +145,11 @@ template <typename T> [[nodiscard]] T number(std::string_view token, const Lines
 
 void require_header(Lines &lines, std::string_view expected) {
   std::string line;
+  std::vector<std::string_view> fields;
   if (!lines.next(line)) {
     lines.fail("empty component file");
   }
-  const auto fields = tokens(line);
+  tokens(line, fields);
   if (fields.size() < 3 || lower(fields[0]) != "ucla" || lower(fields[1]) != expected) {
     lines.fail("expected 'UCLA " + std::string(expected) + " <version>' header");
   }
@@ -160,12 +166,13 @@ struct Components {
 [[nodiscard]] Components parse_aux(const std::filesystem::path &path) {
   Lines lines(path);
   std::string line;
+  std::vector<std::string_view> fields;
 
   if (!lines.next(line)) {
     lines.fail("empty AUX manifest");
   }
 
-  const auto fields = tokens(line);
+  tokens(line, fields);
   if (fields.size() < 3 || fields[1] != ":") {
     lines.fail("expected '<format> : <component files>'");
   }
@@ -214,9 +221,10 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
   std::optional<std::uint64_t> declared_terminals;
   std::uint64_t terminal_count = 0;
   std::string line;
+  std::vector<std::string_view> fields;
 
   while (lines.next(line)) {
-    const auto fields = tokens(line);
+    tokens(line, fields);
     if (fields[0] == "NumNodes") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumNodes");
@@ -277,32 +285,50 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
     lines.fail("NumTerminals does not match parsed terminal records");
 }
 
-using CellIndex = std::unordered_map<std::string_view, std::uint32_t>;
-using NetIndex = std::unordered_map<std::string_view, std::uint32_t>;
+template <typename Record> class NameIndex {
+public:
+  NameIndex(const std::vector<Record> &records, const std::filesystem::path &path, std::string_view kind) : records_(records) {
+    if (records.size() >= EMPTY)
+      throw Error(path.string() + ": " + std::string(kind) + " count exceeds placement model limit");
 
-// Index keys borrow names from the completed cell/net vectors. Those vectors
-// must not grow while their corresponding index is in use.
-[[nodiscard]] CellIndex make_cell_index(const Board &board, const std::filesystem::path &path) {
-  CellIndex result;
-  result.reserve(board.cells.size());
-  for (std::uint32_t i = 0; i < board.cells.size(); ++i) {
-    if (!result.emplace(board.cells[i].name, i).second) {
-      throw Error(path.string() + ": duplicate cell name '" + board.cells[i].name + "'");
+    // Open addressing stores one compact integer per slot. In contrast,
+    // std::unordered_map allocates a separate node for every name, which is
+    // particularly expensive for designs with millions of cells and nets.
+    const auto required = records.size() + records.size() / 2 + 1;
+    slots_.assign(std::bit_ceil(required), EMPTY);
+    for (std::uint32_t i = 0; i < records.size(); ++i) {
+      auto slot = initial_slot(records[i].name);
+      while (slots_[slot] != EMPTY) {
+        if (records_[slots_[slot]].name == records[i].name)
+          throw Error(path.string() + ": duplicate " + std::string(kind) + " name '" + records[i].name + "'");
+        slot = (slot + 1) & (slots_.size() - 1);
+      }
+      slots_[slot] = i;
     }
   }
-  return result;
-}
 
-[[nodiscard]] NetIndex make_net_index(const Board &board, const std::filesystem::path &path) {
-  NetIndex result;
-  result.reserve(board.nets.size());
-  for (std::uint32_t i = 0; i < board.nets.size(); ++i) {
-    if (!result.emplace(board.nets[i].name, i).second) {
-      throw Error(path.string() + ": duplicate net name '" + board.nets[i].name + "'");
+  [[nodiscard]] std::optional<std::uint32_t> find(std::string_view name) const {
+    auto slot = initial_slot(name);
+    while (slots_[slot] != EMPTY) {
+      const auto index = slots_[slot];
+      if (records_[index].name == name)
+        return index;
+      slot = (slot + 1) & (slots_.size() - 1);
     }
+    return std::nullopt;
   }
-  return result;
-}
+
+private:
+  static constexpr std::uint32_t EMPTY = std::numeric_limits<std::uint32_t>::max();
+
+  [[nodiscard]] std::size_t initial_slot(std::string_view name) const { return std::hash<std::string_view>{}(name) & (slots_.size() - 1); }
+
+  const std::vector<Record> &records_;
+  std::vector<std::uint32_t> slots_;
+};
+
+using CellIndex = NameIndex<Cell>;
+using NetIndex = NameIndex<Net>;
 
 void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex &cell_index) {
   Lines lines(path);
@@ -310,9 +336,10 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
   std::optional<std::uint64_t> declared_nets;
   std::optional<std::uint64_t> declared_pins;
   std::string line;
+  std::vector<std::string_view> fields;
 
   while (lines.next(line)) {
-    auto fields = tokens(line);
+    tokens(line, fields);
     if (fields[0] == "NumNets") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumNets");
@@ -348,14 +375,14 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     for (std::uint64_t i = 0; i < degree; ++i) {
       if (!lines.next(line))
         lines.fail("unexpected end inside net pins");
-      fields = tokens(line);
+      tokens(line, fields);
       if (fields.size() < 2)
         lines.fail("pin record requires cell and direction");
       const auto cell = cell_index.find(fields[0]);
-      if (cell == cell_index.end())
+      if (!cell)
         lines.fail("pin references unknown cell '" + std::string(fields[0]) + "'");
       Pin pin;
-      pin.cell = cell->second;
+      pin.cell = *cell;
       pin.direction = pin_direction(fields[1], lines);
       if (fields.size() >= 5 && fields[2] == ":") {
         pin.offset_x = number<double>(fields[3], lines, "pin X offset");
@@ -386,9 +413,10 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
   std::optional<std::size_t> net_weight_count;
   std::unordered_set<std::string> seen;
   std::string line;
+  std::vector<std::string_view> fields;
 
   while (lines.next(line)) {
-    const auto fields = tokens(line);
+    tokens(line, fields);
     if (fields.size() < 2)
       lines.fail("weight record requires at least one value");
     if (!seen.emplace(fields[0]).second)
@@ -402,16 +430,16 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
     // Bookshelf permits different vector dimensions for cells and nets, but
     // records of the same kind must agree so downstream consumers see a
     // consistent feature vector.
-    if (const auto cell = cell_index.find(fields[0]); cell != cell_index.end()) {
+    if (const auto cell = cell_index.find(fields[0])) {
       if (node_weight_count && *node_weight_count != values.size())
         lines.fail("inconsistent node weight dimension");
       node_weight_count = values.size();
-      board.cells[cell->second].weights = std::move(values);
-    } else if (const auto net = net_index.find(fields[0]); net != net_index.end()) {
+      board.cells[*cell].weights = std::move(values);
+    } else if (const auto net = net_index.find(fields[0])) {
       if (net_weight_count && *net_weight_count != values.size())
         lines.fail("inconsistent net weight dimension");
       net_weight_count = values.size();
-      board.nets[net->second].weights = std::move(values);
+      board.nets[*net].weights = std::move(values);
     } else {
       lines.fail("weight references unknown cell or net '" + std::string(fields[0]) + "'");
     }
@@ -422,11 +450,12 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   Lines lines(path);
   require_header(lines, "scl");
   std::string line;
+  std::vector<std::string_view> fields;
 
   if (!lines.next(line))
     lines.fail("missing NumRows");
 
-  auto fields = tokens(line);
+  tokens(line, fields);
   if (fields.size() < 3 || fields[0] != "NumRows" || fields[1] != ":")
     lines.fail("expected NumRows declaration");
 
@@ -434,7 +463,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   board.rows.reserve(static_cast<std::size_t>(declared));
 
   while (lines.next(line)) {
-    fields = tokens(line);
+    tokens(line, fields);
     if (fields.size() < 2 || fields[0] != "CoreRow" || lower(fields[1]) != "horizontal")
       lines.fail("expected 'CoreRow Horizontal'");
 
@@ -445,7 +474,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     bool ended = false;
 
     while (lines.next(line)) {
-      fields = tokens(line);
+      tokens(line, fields);
 
       if (fields[0] == "End") {
         ended = true;
@@ -531,16 +560,17 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
   Lines lines(path);
   require_header(lines, "pl");
   std::string line;
+  std::vector<std::string_view> fields;
 
   while (lines.next(line)) {
-    const auto fields = tokens(line);
+    tokens(line, fields);
     if (fields.size() < 3)
       lines.fail("placement requires cell, X, and Y");
 
     const auto cell = cell_index.find(fields[0]);
-    if (cell == cell_index.end())
+    if (!cell)
       lines.fail("placement references unknown cell '" + std::string(fields[0]) + "'");
-    if (board.cells[cell->second].location)
+    if (board.cells[*cell].location)
       lines.fail("duplicate placement for '" + std::string(fields[0]) + "'");
 
     Location location;
@@ -571,7 +601,7 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
     if ((location.width && *location.width < 0) || (location.height && *location.height < 0))
       lines.fail("placement dimensions cannot be negative");
 
-    board.cells[cell->second].location = location;
+    board.cells[*cell].location = location;
   }
 }
 
@@ -590,13 +620,13 @@ public:
     // Parse in dependency order. Names are resolved once into compact numeric
     // indices; the core Board therefore remains independent of Bookshelf.
     parse_nodes(components.nodes, board);
-    const auto cell_index = make_cell_index(board, components.nodes);
+    const CellIndex cell_index(board.cells, components.nodes, "cell");
 
     parse_nets(components.nets, board, cell_index);
     {
       // The net index is only needed for the optional weight file. Limit its
       // lifetime because large designs can contain millions of names.
-      const auto net_index = make_net_index(board, components.nets);
+      const NetIndex net_index(board.nets, components.nets, "net");
       if (components.weights)
         parse_weights(*components.weights, board, cell_index, net_index);
     }

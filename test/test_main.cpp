@@ -129,6 +129,16 @@ void malformed_parser_test() {
   write(temporary.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 1\nNumPins : 1\n"
                                         "NetDegree : 1 broken\nmissing I : 0 0\n");
   expect_error([&] { (void)parse_fixture(temporary.path()); }, "pin references unknown cell");
+
+  fixture(temporary.path());
+  write(temporary.path() / "tiny.nodes", "UCLA nodes 1.0\nNumNodes : 2\nNumTerminals : 0\n"
+                                         "duplicate 1 1\nduplicate 2 2\n");
+  expect_error([&] { (void)parse_fixture(temporary.path()); }, "duplicate cell name 'duplicate'");
+
+  fixture(temporary.path());
+  write(temporary.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 2\nNumPins : 0\n"
+                                        "NetDegree : 0 duplicate\nNetDegree : 0 duplicate\n");
+  expect_error([&] { (void)parse_fixture(temporary.path()); }, "duplicate net name 'duplicate'");
 }
 
 void placement_override_test() {
