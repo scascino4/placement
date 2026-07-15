@@ -204,7 +204,21 @@ private:
   return color.str();
 }
 
-struct DensityLayout {
+template <typename Grid> struct DensityPresentation;
+
+template <> struct DensityPresentation<UtilizationGrid> {
+  static constexpr std::string_view kind = "utilization";
+};
+
+template <> struct DensityPresentation<PinDensityGrid> {
+  static constexpr std::string_view kind = "pin density";
+};
+
+template <> struct DensityPresentation<CellDensityGrid> {
+  static constexpr std::string_view kind = "cell density";
+};
+
+template <typename Grid> struct DensityLayout {
   Bounds core;
   double width{};
   double height{};
@@ -213,14 +227,14 @@ struct DensityLayout {
   double stroke{};
 };
 
-[[nodiscard]] DensityLayout density_layout(const Board &board, const RenderOptions &options, std::string_view kind) {
+template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &options) {
   Bounds core;
   for (const auto &row : board.rows) {
     for (const auto &subrow : row.subrows)
       core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
   }
   if (core.empty())
-    throw Error("cannot render " + std::string(kind) + " without a placement region");
+    throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
 
   const auto width = core.max_x - core.min_x;
   const auto height = core.max_y - core.min_y;
@@ -240,9 +254,9 @@ template <typename Grid, typename Function> void write_grid_bins(std::ostream &o
   }
 }
 
-template <typename Description, typename Bins>
-void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout &layout,
-                       std::string_view kind, Description description, Bins bins, bool movable_overlay) {
+template <typename Grid, typename Description, typename Bins>
+void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
+                       Description description, Bins bins, bool movable_overlay) {
   write_atomic(path, [&](std::ostream &output) {
     const auto background = background_color(options.dark_mode);
     const auto surface = options.dark_mode ? "#0f172a" : "#f8fafc";
@@ -253,7 +267,7 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
     output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
            << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -layout.padding << ' ' << -layout.padding << ' '
            << layout.width + 2 * layout.padding << ' ' << layout.height + 2 * layout.padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
-           << "  <title>" << escape(board.name) << ' ' << kind << "</title>\n"
+           << "  <title>" << escape(board.name) << ' ' << DensityPresentation<Grid>::kind << "</title>\n"
            << "  <desc>";
     description(output);
     output << "</desc>\n"
@@ -284,11 +298,11 @@ public:
   explicit UtilizationSvgWriter(RenderOptions options) : options_(options) {}
 
   void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout(board, options_, "utilization");
+    const auto layout = density_layout<UtilizationGrid>(board, options_);
     const auto grid = board.utilization(layout.bin_size);
     const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
     write_density_svg(
-        output_path, board, options_, layout, "utilization",
+        output_path, board, options_, layout,
         [&](std::ostream &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
                  << "; green is low utilization, red is 100 percent or greater, gray is not placeable";
@@ -314,7 +328,7 @@ public:
   explicit PinDensitySvgWriter(RenderOptions options) : options_(options) {}
 
   void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout(board, options_, "pin density");
+    const auto layout = density_layout<PinDensityGrid>(board, options_);
     const auto grid = board.pin_density(layout.bin_size);
     const auto utilization_grid = board.utilization(layout.bin_size);
 
@@ -333,7 +347,7 @@ public:
 
     const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
     write_density_svg(
-        output_path, board, options_, layout, "pin density",
+        output_path, board, options_, layout,
         [&](std::ostream &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
                  << color_ceiling << " pins per square placement unit";
@@ -360,11 +374,11 @@ public:
   explicit CellDensitySvgWriter(RenderOptions options) : options_(options) {}
 
   void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout(board, options_, "cell density");
+    const auto layout = density_layout<CellDensityGrid>(board, options_);
     const auto grid = board.cell_density(layout.bin_size);
     const auto unavailable = options_.dark_mode ? "#374151" : "#d1d5db";
     write_density_svg(
-        output_path, board, options_, layout, "cell density",
+        output_path, board, options_, layout,
         [&](std::ostream &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
                  << "; density is movable standard-cell overlap divided by capacity after macros and fixed physical objects are removed";

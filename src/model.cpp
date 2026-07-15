@@ -110,7 +110,22 @@ void validate(const PlacedRectangle &rect) {
   return bounds;
 }
 
-template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size, std::string_view kind) {
+template <typename Grid> struct GridTraits;
+
+template <> struct GridTraits<UtilizationGrid> {
+  static constexpr std::string_view kind = "utilization";
+};
+
+template <> struct GridTraits<PinDensityGrid> {
+  static constexpr std::string_view kind = "pin density";
+};
+
+template <> struct GridTraits<CellDensityGrid> {
+  static constexpr std::string_view kind = "cell density";
+};
+
+template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size) {
+  constexpr auto kind = GridTraits<Grid>::kind;
   if (!std::isfinite(bin_size) || bin_size <= 0)
     throw Error(std::string(kind) + " bin size must be finite and positive");
 
@@ -138,9 +153,9 @@ template <typename Grid, typename Function> void for_each_bin(Grid &grid, Functi
   }
 }
 
-template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row, std::string_view kind) {
+template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row) {
   if (column >= grid.columns || row >= grid.rows)
-    throw Error(std::string(kind) + " bin index is out of bounds");
+    throw Error(std::string(GridTraits<Grid>::kind) + " bin index is out of bounds");
   return grid.bins[static_cast<std::size_t>(row * grid.columns + column)];
 }
 
@@ -191,7 +206,7 @@ std::optional<double> UtilizationBin::utilization() const {
   return movable_area / placeable_area;
 }
 
-const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "utilization"); }
+const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row); }
 
 double PinDensityBin::density() const {
   if (area <= 0)
@@ -199,7 +214,7 @@ double PinDensityBin::density() const {
   return static_cast<double>(pin_count) / area;
 }
 
-const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "pin density"); }
+const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row); }
 
 std::optional<double> CellDensityBin::density() const {
   if (available_area <= 0)
@@ -207,10 +222,10 @@ std::optional<double> CellDensityBin::density() const {
   return movable_area / available_area;
 }
 
-const CellDensityBin &CellDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row, "cell density"); }
+const CellDensityBin &CellDensityGrid::at(std::uint64_t column, std::uint64_t row) const { return bin_at(*this, column, row); }
 
 UtilizationGrid Board::utilization(double bin_size) const {
-  auto grid = make_grid<UtilizationGrid>(rows, bin_size, "utilization");
+  auto grid = make_grid<UtilizationGrid>(rows, bin_size);
 
   for (const auto &row : rows) {
     for (const auto &subrow : row.subrows)
@@ -272,7 +287,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
 }
 
 PinDensityGrid Board::pin_density(double bin_size) const {
-  auto grid = make_grid<PinDensityGrid>(rows, bin_size, "pin density");
+  auto grid = make_grid<PinDensityGrid>(rows, bin_size);
   for_each_bin(grid, [](PinDensityBin &bin, double area) { bin.area = area; });
 
   for (const auto &pin : pins) {
@@ -295,7 +310,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
 }
 
 CellDensityGrid Board::cell_density(double bin_size) const {
-  auto grid = make_grid<CellDensityGrid>(rows, bin_size, "cell density");
+  auto grid = make_grid<CellDensityGrid>(rows, bin_size);
   for_each_bin(grid, [](CellDensityBin &bin, double area) { bin.available_area = area; });
 
   for (const auto &cell : cells) {
