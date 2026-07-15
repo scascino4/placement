@@ -40,12 +40,13 @@ DREAMPLACE_OUTPUT_TARGETS := $(addprefix dreamplace-output-,$(DREAMPLACE_DESIGNS
 FREE_OUTPUT_AUX_FILES := $(wildcard data/ispd2005free/*/*_allfree.aux)
 FREE_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(FREE_OUTPUT_AUX_FILES))))
 FREE_OUTPUT_TARGETS := $(addprefix free-output-,$(FREE_OUTPUT_DESIGNS))
-FREE_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005free-dreamplace/*.macro.gp.pl)
-FREE_DREAMPLACE_DESIGNS := $(patsubst %.macro.gp.pl,%,$(notdir $(FREE_DREAMPLACE_PL_FILES)))
+FREE_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005free-dreamplace/*_allfree.gp.pl)
+FREE_DREAMPLACE_DESIGNS := $(patsubst %_allfree.gp.pl,%,$(notdir $(FREE_DREAMPLACE_PL_FILES)))
 FREE_DREAMPLACE_OUTPUT_TARGETS := $(addprefix free-dreamplace-output-,$(FREE_DREAMPLACE_DESIGNS))
 
-.PHONY: all test valgrind outputs $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
-	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
+.PHONY: all test valgrind check-data outputs $(OUTPUT_TARGETS) \
+	$(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
+	$(FREE_DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -78,8 +79,27 @@ valgrind:
 		VALGRIND_CXXFLAGS="$(VALGRIND_CXXFLAGS)" \
 		VALGRIND_FLAGS="$(VALGRIND_FLAGS)" ./test/valgrind_smoke.sh
 
-outputs: all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
+check-data:
+	@missing=""; \
+	for design in adaptec1 adaptec2 adaptec3 adaptec4 \
+		bigblue1 bigblue2 bigblue3 bigblue4; do \
+		for path in \
+			"data/ispd2005/$$design/$$design.dp.aux" \
+			"data/ispd2005free/$$design/$${design}_allfree.aux"; do \
+			if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
+		done; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "Benchmark data is missing or incomplete: $$missing" >&2; \
+		echo "Run ./scripts/prepare_data.sh and retry make outputs." >&2; \
+		exit 1; \
+	fi
+
+outputs: check-data all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
 	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS)
+
+$(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
+	$(FREE_DREAMPLACE_OUTPUT_TARGETS): | check-data
 
 $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
@@ -121,7 +141,7 @@ $(FREE_OUTPUT_TARGETS): free-output-%: $(PARSE_BIN) $(RENDER_BIN)
 
 $(FREE_DREAMPLACE_OUTPUT_TARGETS): free-dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005free-dreamplace/$*"
-	$(PARSE_BIN) --placement-file "data/ispd2005free-dreamplace/$*.macro.gp.pl" \
+	$(PARSE_BIN) --placement-file "data/ispd2005free-dreamplace/$*_allfree.gp.pl" \
 		"data/ispd2005free/$*/$*.aux" \
 		"out/ispd2005free-dreamplace/$*/placement.placebin"
 	$(RENDER_BIN) "out/ispd2005free-dreamplace/$*/placement.placebin" \

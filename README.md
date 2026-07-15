@@ -20,6 +20,34 @@ make outputs
 make -j 8 outputs
 ```
 
+The benchmark inputs used by `make outputs` can be downloaded automatically:
+
+```sh
+./scripts/prepare_data.sh
+```
+
+This downloads ISPD 2005 and its movable-macro `ispd2005free` variant into
+`data`. Existing complete benchmark directories are left unchanged. To also
+generate DREAMPlace solutions, explicitly provide its launcher, Python
+environment, and directory of per-design configurations:
+
+```sh
+./scripts/prepare_data.sh \
+  --placer /path/to/DREAMPlace/install/dreamplace/Placer.py \
+  --python /path/to/DREAMPlace/.venv/bin/python \
+  --config-dir /path/to/DREAMPlace/install/test
+```
+
+The configuration directory must contain `ispd2005/<design>.json` and
+`ispd2005free/<design>_allfree.json`. Temporary copies override only
+`aux_input` and `result_dir`; GPU selection, optimizer settings, seeds, macro
+placement, and every other placement choice remain unchanged. An executable
+wrapper can be supplied with `--dreamplace` instead of `--placer` and
+`--python`. DREAMPlace is never run without an explicit launcher and
+`--config-dir`. By default all eight designs in both families are placed; use
+`--design adaptec1` to run only one. Run `./scripts/prepare_data.sh --help` for
+all options.
+
 `make outputs` parses the legalized `*.dp.aux` manifest in each
 `data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`,
 `utilization.svg`, `pin-density.svg`, and `cell-density.svg` under
@@ -32,12 +60,14 @@ movable. These files are starting configurations rather than completed
 placements: every standard cell has the placeholder location `(0, 0)`, so its
 placement and density views stack the standard cells at the origin and
 primarily describe the initial configuration. Fully placed results from
-`data/ispd2005free-dreamplace/<design>.macro.gp.pl` are written under
+`data/ispd2005free-dreamplace/<design>_allfree.gp.pl` are written under
 `out/ispd2005free-dreamplace/<design>`.
 It uses one job by default;
 pass `-j N` to process up to `N` benchmarks concurrently. Parsing and rendering
 remain ordered within each benchmark. `make clean` removes compiled files;
 `make clean-outputs` removes generated benchmark results.
+If benchmark data is missing or incomplete, `make outputs` exits with a message
+directing the user to `./scripts/prepare_data.sh`.
 
 `make valgrind` builds debug-symbol variants of both applications in
 `build/valgrind`, then checks parsing, placement, utilization, pin-density, and
