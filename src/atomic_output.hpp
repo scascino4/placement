@@ -15,8 +15,7 @@ namespace placement::detail {
   return output.string() + ".tmp." + std::to_string(tick);
 }
 
-template <typename Write>
-void atomic_output(const std::filesystem::path &output, Write &&write) {
+template <typename Write> void atomic_output(const std::filesystem::path &output, Write &&write) {
   if (!output.parent_path().empty())
     std::filesystem::create_directories(output.parent_path());
 

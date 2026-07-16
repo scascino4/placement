@@ -52,8 +52,7 @@ public:
       throw Error("failed while writing binary placement");
   }
 
-  template <std::unsigned_integral T>
-  void integer(T value) {
+  template <std::unsigned_integral T> void integer(T value) {
     std::array<std::uint8_t, sizeof(T)> encoded{};
     for (std::size_t i = 0; i < encoded.size(); ++i)
       encoded[i] = static_cast<std::uint8_t>(value >> (i * 8));
@@ -105,8 +104,7 @@ public:
       throw Error(path_.string() + ": truncated binary placement");
   }
 
-  template <std::unsigned_integral T>
-  [[nodiscard]] T integer() {
+  template <std::unsigned_integral T> [[nodiscard]] T integer() {
     std::array<std::uint8_t, sizeof(T)> encoded{};
     bytes(encoded.data(), encoded.size());
     std::uint64_t value{};
@@ -136,8 +134,7 @@ public:
     return values;
   }
 
-  template <typename Enum>
-  [[nodiscard]] Enum enumeration(std::uint8_t max, std::string_view name) {
+  template <typename Enum> [[nodiscard]] Enum enumeration(std::uint8_t max, std::string_view name) {
     const auto value = integer<std::uint8_t>();
     if (value > max)
       throw Error(path_.string() + ": invalid " + std::string(name));

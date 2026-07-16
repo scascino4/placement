@@ -85,8 +85,7 @@ void check(bool condition, std::string_view message) {
 
 [[nodiscard]] bool close(double a, double b) { return std::abs(a - b) < 1e-12; }
 
-template <typename Function>
-void expect_error(Function &&function, std::string_view fragment) {
+template <typename Function> void expect_error(Function &&function, std::string_view fragment) {
   try {
     function();
   } catch (const placement::Error &error) {

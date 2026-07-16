@@ -71,10 +71,7 @@ struct Bounds {
   [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
 };
 
-enum class CellClass { Movable,
-                       Macro,
-                       Fixed,
-                       FixedNonInteracting };
+enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
   if (cell.macro)
@@ -107,8 +104,7 @@ public:
     return *this;
   }
 
-  template <std::integral T>
-  SvgOutput &operator<<(T value) {
+  template <std::integral T> SvgOutput &operator<<(T value) {
     std::array<char, 32> encoded{};
     const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value);
     if (result.ec != std::errc{})
@@ -180,8 +176,7 @@ void write_paths(SvgOutput &output, const Board &board, CellClass classification
     output << "\"/>\n";
 }
 
-template <typename Write>
-void write_atomic(const std::filesystem::path &path, Write write) {
+template <typename Write> void write_atomic(const std::filesystem::path &path, Write write) {
   detail::atomic_output(path, [&](const auto &temporary) {
     SvgOutput output(temporary);
     write(output);
@@ -257,26 +252,21 @@ void write_utilization_color(SvgOutput &output, double utilization, const render
   output.number(hue, 5) << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
 }
 
-template <typename Grid>
-struct DensityPresentation;
+template <typename Grid> struct DensityPresentation;
 
-template <>
-struct DensityPresentation<UtilizationGrid> {
+template <> struct DensityPresentation<UtilizationGrid> {
   static constexpr std::string_view kind = "utilization";
 };
 
-template <>
-struct DensityPresentation<PinDensityGrid> {
+template <> struct DensityPresentation<PinDensityGrid> {
   static constexpr std::string_view kind = "pin density";
 };
 
-template <>
-struct DensityPresentation<CellDensityGrid> {
+template <> struct DensityPresentation<CellDensityGrid> {
   static constexpr std::string_view kind = "cell density";
 };
 
-template <typename Grid>
-struct DensityLayout {
+template <typename Grid> struct DensityLayout {
   Bounds core;
   double width{};
   double height{};
@@ -285,8 +275,7 @@ struct DensityLayout {
   double stroke{};
 };
 
-template <typename Grid>
-[[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &options) {
+template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &options) {
   Bounds core;
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
@@ -300,8 +289,7 @@ template <typename Grid>
   return {core, width, height, options.bin_size.value_or(span / 100.0), span * 0.01, span / 8000.0};
 }
 
-template <typename Grid, typename Function>
-void write_grid_bins(SvgOutput &output, const Grid &grid, Function write_bin) {
+template <typename Grid, typename Function> void write_grid_bins(SvgOutput &output, const Grid &grid, Function write_bin) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
     const auto height = std::min(grid.bin_size, grid.max_y - y);
