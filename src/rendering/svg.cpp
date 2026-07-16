@@ -10,10 +10,13 @@
 #include <charconv>
 #include <cmath>
 #include <concepts>
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace placement {
 namespace {
@@ -86,7 +89,6 @@ enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 class SvgOutput {
 public:
   explicit SvgOutput(const std::filesystem::path &path) {
-    file_.pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
     if (!file_.open(path, std::ios::out))
       throw Error("cannot create " + path.string());
   }
@@ -116,6 +118,12 @@ public:
   SvgOutput &operator<<(double value) { return number(value, 12); }
 
   SvgOutput &number(double value, int precision) {
+    constexpr double MAX_EXACT_INTEGER = 9'007'199'254'740'992.0;
+    if (value == 0.0 && !std::signbit(value))
+      return *this << '0';
+    if (value != 0.0 && value >= -MAX_EXACT_INTEGER && value <= MAX_EXACT_INTEGER && std::trunc(value) == value)
+      return *this << static_cast<std::int64_t>(value);
+
     std::array<char, 32> encoded{};
     const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value, std::chars_format::general, precision);
     if (result.ec != std::errc{})
@@ -125,40 +133,71 @@ public:
   }
 
   void finish() {
+    flush_buffer();
     if (file_.pubsync() != 0)
       throw Error("failed while writing SVG");
   }
 
 private:
   void write(const char *data, std::size_t size) {
-    if (file_.sputn(data, static_cast<std::streamsize>(size)) != static_cast<std::streamsize>(size))
+    while (size != 0) {
+      if (used_ == buffer_.size())
+        flush_buffer();
+
+      const auto count = std::min(size, buffer_.size() - used_);
+      std::memcpy(buffer_.data() + used_, data, count);
+      used_ += count;
+      data += count;
+      size -= count;
+    }
+  }
+
+  void flush_buffer() {
+    if (used_ == 0)
+      return;
+    if (file_.sputn(buffer_.data(), static_cast<std::streamsize>(used_)) != static_cast<std::streamsize>(used_))
       throw Error("failed while writing SVG");
+    used_ = 0;
   }
 
   // A larger fixed buffer avoids both a heap allocation and thousands of
   // small writes for SVGs containing millions of rectangles.
   std::array<char, 256 * 1024> buffer_{};
+  std::size_t used_{};
   std::filebuf file_;
 };
 
-void include_cell_bounds(const Board &board, Bounds &bounds) {
-  for (const auto &cell : board.cells)
-    if (cell.location)
-      bounds.include(placed_rectangle(cell));
+constexpr std::uint8_t UNPLACED_CELL = std::numeric_limits<std::uint8_t>::max();
+
+[[nodiscard]] std::vector<std::uint8_t> classify_cells(const Board &board, Bounds *bounds = nullptr) {
+  std::vector<std::uint8_t> classifications(board.cells.size(), UNPLACED_CELL);
+  for (std::size_t index = 0; index < board.cells.size(); ++index) {
+    const auto &cell = board.cells[index];
+    if (!cell.location)
+      continue;
+
+    if (bounds)
+      bounds->include(placed_rectangle(cell));
+    classifications[index] = static_cast<std::uint8_t>(cell_class(cell));
+  }
+  return classifications;
 }
 
-void write_paths(SvgOutput &output, const Board &board, CellClass classification, std::string_view css_class) {
+void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications, CellClass classification,
+                 std::string_view css_class) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
-  // viewers to parse on multi-million-cell designs. Filtering directly from
-  // the model avoids duplicating every placed rectangle in a temporary array.
+  // viewers to parse on multi-million-cell designs. The compact classification
+  // array keeps the class-ordered SVG layers without touching every large Cell
+  // record during all four filtering passes.
   constexpr std::size_t CELLS_PER_PATH = 10'000;
   std::size_t in_path = 0;
 
-  for (const auto &cell : board.cells) {
-    if (!cell.location || cell_class(cell) != classification)
+  for (std::size_t index = 0; index < board.cells.size(); ++index) {
+    if (classifications[index] != static_cast<std::uint8_t>(classification))
       continue;
 
+    const auto &cell = board.cells[index];
     const auto rect = placed_rectangle(cell);
     if (rect.width == 0 || rect.height == 0)
       continue;
@@ -196,7 +235,7 @@ public:
     for (const auto &row : board.rows)
       for (const auto &subrow : row.subrows)
         bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-    include_cell_bounds(board, bounds);
+    const auto classifications = classify_cells(board, &bounds);
 
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
@@ -236,10 +275,10 @@ public:
           output << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
                  << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
 
-      write_paths(output, board, CellClass::Movable, "movable");
-      write_paths(output, board, CellClass::Macro, "macro");
-      write_paths(output, board, CellClass::Fixed, "fixed");
-      write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni");
+      write_paths(output, board, classifications, CellClass::Movable, "movable");
+      write_paths(output, board, classifications, CellClass::Macro, "macro");
+      write_paths(output, board, classifications, CellClass::Fixed, "fixed");
+      write_paths(output, board, classifications, CellClass::FixedNonInteracting, "fixed-ni");
 
       output << "  </g>\n</svg>\n";
     });
@@ -309,6 +348,7 @@ template <typename Grid, typename Function> void write_grid_bins(SvgOutput &outp
 template <typename Grid, typename Description, typename Bins>
 void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
                        Description description, Bins bins, bool movable_overlay) {
+  const auto classifications = classify_cells(board);
   write_atomic(path, [&](SvgOutput &output) {
     const auto &style = rendering_style::palette(options.dark_mode);
 
@@ -335,10 +375,10 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
 
     bins(output);
     if (movable_overlay)
-      write_paths(output, board, CellClass::Movable, "movable-overlay");
-    write_paths(output, board, CellClass::Macro, "macro-overlay");
-    write_paths(output, board, CellClass::Fixed, "fixed-overlay");
-    write_paths(output, board, CellClass::FixedNonInteracting, "fixed-ni-overlay");
+      write_paths(output, board, classifications, CellClass::Movable, "movable-overlay");
+    write_paths(output, board, classifications, CellClass::Macro, "macro-overlay");
+    write_paths(output, board, classifications, CellClass::Fixed, "fixed-overlay");
+    write_paths(output, board, classifications, CellClass::FixedNonInteracting, "fixed-ni-overlay");
     output << "  </g>\n</svg>\n";
   });
 }

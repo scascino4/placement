@@ -3,6 +3,7 @@
 #include "placement/error.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cctype>
 #include <charconv>
@@ -41,13 +42,13 @@ void tokens(const std::string &line, std::vector<std::string_view> &result) {
   result.clear();
   std::size_t pos = 0;
   while (pos < line.size()) {
-    pos = line.find_first_not_of(" \t\r\n", pos);
-    if (pos == std::string::npos)
-      break;
-
-    const auto end = line.find_first_of(" \t\r\n", pos);
-    result.emplace_back(line.data() + pos, (end == std::string::npos ? line.size() : end) - pos);
-    pos = end == std::string::npos ? line.size() : end;
+    while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t' || line[pos] == '\r' || line[pos] == '\n'))
+      ++pos;
+    const auto begin = pos;
+    while (pos < line.size() && line[pos] != ' ' && line[pos] != '\t' && line[pos] != '\r' && line[pos] != '\n')
+      ++pos;
+    if (begin != pos)
+      result.emplace_back(line.data() + begin, pos - begin);
   }
 }
 
@@ -86,8 +87,66 @@ private:
   std::uint64_t number_{};
 };
 
+[[nodiscard]] std::optional<double> simple_decimal(std::string_view token) {
+  // Bookshelf geometry overwhelmingly uses short decimal notation. Keep the
+  // common path to one bounded integer accumulation and one division; unusual
+  // or high-precision spellings retain the fully general std::from_chars path.
+  constexpr std::array<double, 16> powers_of_ten{1.0,
+                                                 10.0,
+                                                 100.0,
+                                                 1'000.0,
+                                                 10'000.0,
+                                                 100'000.0,
+                                                 1'000'000.0,
+                                                 10'000'000.0,
+                                                 100'000'000.0,
+                                                 1'000'000'000.0,
+                                                 10'000'000'000.0,
+                                                 100'000'000'000.0,
+                                                 1'000'000'000'000.0,
+                                                 10'000'000'000'000.0,
+                                                 100'000'000'000'000.0,
+                                                 1'000'000'000'000'000.0};
+
+  bool negative = false;
+  if (!token.empty() && token.front() == '-') {
+    negative = true;
+    token.remove_prefix(1);
+  }
+  if (token.empty())
+    return std::nullopt;
+
+  std::uint64_t significand = 0;
+  std::size_t digits = 0;
+  std::size_t fractional_digits = 0;
+  bool decimal_point = false;
+  for (const char character : token) {
+    if (character == '.' && !decimal_point) {
+      decimal_point = true;
+      continue;
+    }
+    if (character < '0' || character > '9' || digits == 15)
+      return std::nullopt;
+
+    significand = significand * 10 + static_cast<std::uint64_t>(character - '0');
+    ++digits;
+    if (decimal_point)
+      ++fractional_digits;
+  }
+  if (digits == 0)
+    return std::nullopt;
+
+  double value = static_cast<double>(significand) / powers_of_ten[fractional_digits];
+  return negative ? -value : value;
+}
+
 template <typename T> [[nodiscard]] T number(std::string_view token, const Lines &lines, std::string_view description) {
   T value{};
+  if constexpr (std::is_same_v<T, double>) {
+    if (const auto parsed = simple_decimal(token))
+      return *parsed;
+  }
+
   const auto *begin = token.data();
   const auto *end = begin + token.size();
   const auto [ptr, error] = std::from_chars(begin, end, value);

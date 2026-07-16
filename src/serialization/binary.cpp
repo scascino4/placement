@@ -9,6 +9,7 @@
 #include <cctype>
 #include <concepts>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -40,23 +41,31 @@ public:
 class Output {
 public:
   explicit Output(const std::filesystem::path &path) {
-    stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
     stream_.open(path, std::ios::binary);
     if (!stream_)
       throw Error("cannot create " + path.string());
   }
 
   void bytes(const void *data, std::size_t size) {
-    stream_.write(static_cast<const char *>(data), static_cast<std::streamsize>(size));
-    if (!stream_)
-      throw Error("failed while writing binary placement");
+    auto *source = static_cast<const char *>(data);
+    while (size != 0) {
+      if (used_ == buffer_.size())
+        flush_buffer();
+
+      const auto count = std::min(size, buffer_.size() - used_);
+      std::memcpy(buffer_.data() + used_, source, count);
+      used_ += count;
+      source += count;
+      size -= count;
+    }
   }
 
   template <std::unsigned_integral T> void integer(T value) {
-    std::array<std::uint8_t, sizeof(T)> encoded{};
-    for (std::size_t i = 0; i < encoded.size(); ++i)
-      encoded[i] = static_cast<std::uint8_t>(value >> (i * 8));
-    bytes(encoded.data(), encoded.size());
+    if (buffer_.size() - used_ < sizeof(T))
+      flush_buffer();
+
+    for (std::size_t i = 0; i < sizeof(T); ++i)
+      buffer_[used_++] = static_cast<char>(static_cast<std::uint8_t>(value >> (i * 8)));
   }
 
   void real(double value) { integer(std::bit_cast<std::uint64_t>(value)); }
@@ -81,37 +90,57 @@ public:
   }
 
   void finish() {
+    flush_buffer();
     stream_.flush();
     if (!stream_)
       throw Error("failed while finalizing binary placement");
   }
 
 private:
+  void flush_buffer() {
+    if (used_ == 0)
+      return;
+
+    stream_.write(buffer_.data(), static_cast<std::streamsize>(used_));
+    if (!stream_)
+      throw Error("failed while writing binary placement");
+    used_ = 0;
+  }
+
   std::array<char, IO_BUFFER_SIZE> buffer_{};
+  std::size_t used_{};
   std::ofstream stream_;
 };
 
 class Input {
 public:
   explicit Input(const std::filesystem::path &path) : path_(path) {
-    stream_.rdbuf()->pubsetbuf(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
     stream_.open(path, std::ios::binary);
     if (!stream_)
       throw Error("cannot open " + path.string());
   }
 
   void bytes(void *data, std::size_t size) {
-    stream_.read(static_cast<char *>(data), static_cast<std::streamsize>(size));
-    if (stream_.gcount() != static_cast<std::streamsize>(size))
-      throw Error(path_.string() + ": truncated binary placement");
+    auto *destination = static_cast<char *>(data);
+    while (size != 0) {
+      if (position_ == available_)
+        refill(1);
+
+      const auto count = std::min(size, available_ - position_);
+      std::memcpy(destination, buffer_.data() + position_, count);
+      position_ += count;
+      destination += count;
+      size -= count;
+    }
   }
 
   template <std::unsigned_integral T> [[nodiscard]] T integer() {
-    std::array<std::uint8_t, sizeof(T)> encoded{};
-    bytes(encoded.data(), encoded.size());
+    if (available_ - position_ < sizeof(T))
+      refill(sizeof(T));
+
     std::uint64_t value{};
-    for (std::size_t i = 0; i < encoded.size(); ++i)
-      value |= static_cast<std::uint64_t>(encoded[i]) << (i * 8);
+    for (std::size_t i = 0; i < sizeof(T); ++i)
+      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buffer_[position_++])) << (i * 8);
     return static_cast<T>(value);
   }
 
@@ -155,6 +184,9 @@ public:
   }
 
   void require_end() {
+    if (position_ != available_)
+      throw Error(path_.string() + ": trailing binary data");
+
     char byte{};
     if (stream_.read(&byte, 1))
       throw Error(path_.string() + ": trailing binary data");
@@ -165,8 +197,23 @@ public:
   [[nodiscard]] const std::filesystem::path &path() const { return path_; }
 
 private:
+  void refill(std::size_t required) {
+    const auto remaining = available_ - position_;
+    if (remaining != 0)
+      std::memmove(buffer_.data(), buffer_.data() + position_, remaining);
+
+    stream_.read(buffer_.data() + remaining, static_cast<std::streamsize>(buffer_.size() - remaining));
+    const auto read = stream_.gcount();
+    position_ = 0;
+    available_ = remaining + static_cast<std::size_t>(read);
+    if (available_ < required)
+      throw Error(path_.string() + ": truncated binary placement");
+  }
+
   std::filesystem::path path_;
   std::array<char, IO_BUFFER_SIZE> buffer_{};
+  std::size_t position_{};
+  std::size_t available_{};
   std::ifstream stream_;
 };
 

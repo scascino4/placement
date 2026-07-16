@@ -61,7 +61,7 @@ void fixture(const std::filesystem::path &directory) {
   write(directory / "tiny.nodes", "UCLA nodes 1.0\n"
                                   "# cells\n"
                                   "NumNodes : 4\nNumTerminals : 2\n"
-                                  "a 2 4\nb 6 3 terminal\nc 5 2 terminal_NI\nd 1.5 2.5\n");
+                                  "a 2 4\nb 6 3 terminal\nc 5 2 terminal_NI\nd 1.5 2.5e0\n");
   write(directory / "tiny.nets", "UCLA nets 1.0\nNumNets : 2\nNumPins : 4\n"
                                  "NetDegree : 3 net0\n"
                                  "a I : -0.5 1\nb O : 2 0\nc B : 0 0\n"
@@ -112,6 +112,7 @@ void parser_test() {
   check(board.cells[2].kind == placement::CellKind::TerminalNonInteracting, "terminal_NI kind");
   check(!board.cells[2].macro, "non-interacting terminal is not a macro");
   check(!board.cells[3].location, "undefined placement");
+  check(board.cells[3].width == 1.5 && board.cells[3].height == 2.5, "decimal and scientific geometry");
   check(board.cells[0].location->orientation == placement::Orientation::E, "orientation");
   check(board.cells[1].location->status == placement::PlacementStatus::Fixed, "fixed status");
   check(board.cells[2].location->status == placement::PlacementStatus::FixedNonInteracting, "fixed_NI status");
