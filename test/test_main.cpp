@@ -241,15 +241,16 @@ void utilization_test() {
 
   const auto grid = board.utilization(10);
   check(grid.columns == 2 && grid.rows == 1 && grid.bins.size() == 2, "utilization grid dimensions");
-  check(close(grid.at(0, 0).movable_area, 25) && close(grid.at(1, 0).movable_area, 25), "movable area is split at bin boundaries");
-  check(close(grid.at(0, 0).placeable_area, 80) && close(grid.at(1, 0).placeable_area, 100), "fixed geometry is excluded from placeable area");
-  check(close(*grid.at(0, 0).utilization(), 0.3125) && close(*grid.at(1, 0).utilization(), 0.25), "utilization ratios");
+  check(close(grid.at(0, 0).movable_area, 45) && close(grid.at(1, 0).movable_area, 25), "movable cells and macros contribute utilization");
+  check(close(grid.at(0, 0).placeable_area, 100) && close(grid.at(1, 0).placeable_area, 100), "movable macros do not reduce placeable area");
+  check(close(*grid.at(0, 0).utilization(), 0.45) && close(*grid.at(1, 0).utilization(), 0.25), "utilization ratios");
 
   placement::Board fragmented;
   row.subrows = {{0, 4}, {6, 4}};
   fragmented.rows.push_back(row);
   macro.width = 4;
   macro.location->x = 3;
+  macro.location->status = placement::PlacementStatus::Fixed;
   fragmented.cells.push_back(macro);
   const auto fragmented_grid = fragmented.utilization(10);
   check(close(fragmented_grid.at(0, 0).placeable_area, 60), "fixed blockage excludes only its intersection with legal rows");
@@ -337,9 +338,9 @@ void cell_density_test() {
 
   board.cells[1].location->status = placement::PlacementStatus::Movable;
   const auto movable_macro_grid = board.cell_density(10);
-  check(!movable_macro_grid.at(0, 0).density() && close(movable_macro_grid.at(0, 0).movable_area, 0) &&
-            close(movable_macro_grid.at(0, 0).available_area, 0),
-        "movable macros remain excluded from cell density");
+  check(close(*movable_macro_grid.at(0, 0).density(), 1) && close(movable_macro_grid.at(0, 0).movable_area, 100) &&
+            close(movable_macro_grid.at(0, 0).available_area, 100),
+        "movable macros contribute cell density");
   expect_error([&] { (void)board.cell_density(0); }, "finite and positive");
   expect_error([&] { (void)grid.at(3, 0); }, "out of bounds");
 }
@@ -432,8 +433,7 @@ void svg_test() {
   cell_density_renderer->render(board, cell_density_svg);
   const auto cell_density_contents = read(cell_density_svg);
   check(cell_density_contents.find("tiny &lt;&amp;&gt; cell density") != std::string::npos, "cell density SVG title");
-  check(cell_density_contents.find("class=\"bin\"") != std::string::npos &&
-            cell_density_contents.find("movable standard-cell area;") != std::string::npos &&
+  check(cell_density_contents.find("class=\"bin\"") != std::string::npos && cell_density_contents.find("movable-object area;") != std::string::npos &&
             cell_density_contents.find("available area; density") != std::string::npos,
         "cell density SVG bins and tooltips");
   check(contains_parts(cell_density_contents, {".macro-overlay{fill:", default_style.surface}) &&

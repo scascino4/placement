@@ -125,8 +125,8 @@ struct PinDensityGrid {
 };
 
 struct CellDensityBin {
-  // Movable standard-cell/bin overlap divided by capacity left after macros
-  // and fixed physical objects are removed. Overlaps are additive.
+  // Movable-object/bin overlap divided by capacity left after fixed physical
+  // objects are removed. Overlaps are additive.
   double movable_area{};
   double available_area{};
 
@@ -156,8 +156,8 @@ struct Board {
 
   [[nodiscard]] UtilizationGrid utilization(double bin_size) const;
   [[nodiscard]] PinDensityGrid pin_density(double bin_size) const;
-  // Includes placed movable standard cells. Macros and fixed physical objects
-  // reduce available capacity; non-interacting objects are excluded.
+  // Includes all placed movable objects. Fixed physical objects reduce
+  // available capacity; non-interacting objects are excluded.
   [[nodiscard]] CellDensityGrid cell_density(double bin_size) const;
 };
 

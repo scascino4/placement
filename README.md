@@ -145,10 +145,10 @@ same semantic colors.
 
 The `utilization-svg` renderer divides the placement region into square bins
 and colors them from green (low utilization) through yellow to red (100% or
-greater). Utilization is movable standard-cell overlap divided by legal row
-area after subtracting macro and fixed-object overlap. Macros remain visible
-with outlined, light interiors that mask bin colors over their non-placeable
-footprints, whether their placement status is movable or fixed. With no
+greater). Utilization is movable-object overlap divided by legal row area
+after subtracting fixed-object overlap. Movable macros contribute utilization,
+while fixed macros reduce legal capacity. Macros remain visible with outlined,
+light interiors that mask bin colors over their footprints. With no
 `--bin-size`, the bin size is 1% of the placement region's longest dimension;
 an explicit positive size overrides that default.
 
@@ -161,12 +161,11 @@ placement area are gray. Macro footprints use the same opaque overlay as the
 utilization view. Exact pin counts and densities are embedded in SVG tooltips.
 
 The `cell-density-svg` renderer measures the exact geometric overlap of placed
-movable standard cells with each square bin. All macros reduce the bin's
-available area instead of contributing density, regardless of their placement
-status, and are shown with the same opaque light mask. Other fixed physical
-objects also reduce capacity, while objects marked non-interacting are
-excluded. This is a post-placement density map rather than an exact
-reproduction of DREAMPlace's smoothed electrostatic objective, which also uses
-target-density scaling and synthetic filler cells during optimization.
-Movable standard-cell area, available area, and density are embedded in SVG
+movable objects with each square bin. Movable macros contribute density, while
+fixed macros and other fixed physical objects reduce the bin's available area.
+Macros are shown with the same opaque light mask, and objects marked
+non-interacting are excluded. This is a post-placement density map rather than
+an exact reproduction of DREAMPlace's smoothed electrostatic objective, which
+also uses target-density scaling and synthetic filler cells during optimization.
+Movable-object area, available area, and density are embedded in SVG
 tooltips.

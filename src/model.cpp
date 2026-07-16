@@ -276,15 +276,10 @@ UtilizationGrid Board::utilization(double bin_size) const {
       continue;
 
     const auto rect = placed_rectangle(cell);
-    if (cell.macro) {
-      // Macros occupy row area regardless of whether they are movable in the
-      // current placement. Standard-cell utilization excludes their footprint.
-      subtract_row_overlap(rect);
-    } else if (movable(cell)) {
+    if (movable(cell))
       add_overlap(grid, rect, Area::Movable);
-    } else if (fixed(cell)) {
+    else if (fixed(cell))
       subtract_row_overlap(rect);
-    }
   }
 
   for (auto &bin : grid.bins)
@@ -329,7 +324,7 @@ CellDensityGrid Board::cell_density(double bin_size) const {
     if (!cell.location || cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
       continue;
 
-    if (movable(cell) && !cell.macro)
+    if (movable(cell))
       add_overlap(grid, placed_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.movable_area += overlap; });
     else
       add_overlap(grid, placed_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.available_area -= overlap; });

@@ -512,7 +512,7 @@ public:
         output_path, board, options_, layout,
         [&](SvgOutput &output) {
           output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
-                 << "; density is movable standard-cell overlap divided by capacity after macros and fixed physical objects are removed";
+                 << "; density is movable-object overlap divided by capacity after fixed physical objects are removed";
         },
         [&](SvgOutput &output) {
           write_grid_bins(
@@ -524,7 +524,7 @@ public:
                   write_utilization_color(stream, *density, style);
                 else
                   stream << style.unavailable;
-                stream << "\"><title>" << bin.movable_area << " movable standard-cell area; " << bin.available_area << " available area; density ";
+                stream << "\"><title>" << bin.movable_area << " movable-object area; " << bin.available_area << " available area; density ";
                 if (density)
                   stream << *density;
                 else
