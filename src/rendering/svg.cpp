@@ -183,8 +183,26 @@ constexpr std::uint8_t UNPLACED_CELL = std::numeric_limits<std::uint8_t>::max();
   return classifications;
 }
 
-void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications, CellClass classification,
-                 std::string_view css_class) {
+template <CellClass Classification> struct CellPresentation;
+
+template <> struct CellPresentation<CellClass::Movable> {
+  static constexpr std::string_view css_class = "movable";
+};
+
+template <> struct CellPresentation<CellClass::Macro> {
+  static constexpr std::string_view css_class = "macro";
+};
+
+template <> struct CellPresentation<CellClass::Fixed> {
+  static constexpr std::string_view css_class = "fixed";
+};
+
+template <> struct CellPresentation<CellClass::FixedNonInteracting> {
+  static constexpr std::string_view css_class = "fixed-ni";
+};
+
+template <CellClass Classification, bool Overlay>
+void write_cell_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
   // viewers to parse on multi-million-cell designs. The compact classification
@@ -194,7 +212,7 @@ void write_paths(SvgOutput &output, const Board &board, const std::vector<std::u
   std::size_t in_path = 0;
 
   for (std::size_t index = 0; index < board.cells.size(); ++index) {
-    if (classifications[index] != static_cast<std::uint8_t>(classification))
+    if (classifications[index] != static_cast<std::uint8_t>(Classification))
       continue;
 
     const auto &cell = board.cells[index];
@@ -202,8 +220,12 @@ void write_paths(SvgOutput &output, const Board &board, const std::vector<std::u
     if (rect.width == 0 || rect.height == 0)
       continue;
 
-    if (in_path == 0)
-      output << "    <path class=\"" << css_class << "\" d=\"";
+    if (in_path == 0) {
+      output << "    <path class=\"" << CellPresentation<Classification>::css_class;
+      if constexpr (Overlay)
+        output << "-overlay";
+      output << "\" d=\"";
+    }
 
     output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
 
@@ -216,6 +238,16 @@ void write_paths(SvgOutput &output, const Board &board, const std::vector<std::u
 
   if (in_path != 0)
     output << "\"/>\n";
+}
+
+template <CellClass Classification>
+void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
+  write_cell_paths<Classification, false>(output, board, classifications);
+}
+
+template <CellClass Classification>
+void write_overlay_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
+  write_cell_paths<Classification, true>(output, board, classifications);
 }
 
 template <typename Write> void write_atomic(const std::filesystem::path &path, Write write) {
@@ -275,10 +307,10 @@ public:
           output << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
                  << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
 
-      write_paths(output, board, classifications, CellClass::Movable, "movable");
-      write_paths(output, board, classifications, CellClass::Macro, "macro");
-      write_paths(output, board, classifications, CellClass::Fixed, "fixed");
-      write_paths(output, board, classifications, CellClass::FixedNonInteracting, "fixed-ni");
+      write_paths<CellClass::Movable>(output, board, classifications);
+      write_paths<CellClass::Macro>(output, board, classifications);
+      write_paths<CellClass::Fixed>(output, board, classifications);
+      write_paths<CellClass::FixedNonInteracting>(output, board, classifications);
 
       output << "  </g>\n</svg>\n";
     });
@@ -375,10 +407,10 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
 
     bins(output);
     if (movable_overlay)
-      write_paths(output, board, classifications, CellClass::Movable, "movable-overlay");
-    write_paths(output, board, classifications, CellClass::Macro, "macro-overlay");
-    write_paths(output, board, classifications, CellClass::Fixed, "fixed-overlay");
-    write_paths(output, board, classifications, CellClass::FixedNonInteracting, "fixed-ni-overlay");
+      write_overlay_paths<CellClass::Movable>(output, board, classifications);
+    write_overlay_paths<CellClass::Macro>(output, board, classifications);
+    write_overlay_paths<CellClass::Fixed>(output, board, classifications);
+    write_overlay_paths<CellClass::FixedNonInteracting>(output, board, classifications);
     output << "  </g>\n</svg>\n";
   });
 }
