@@ -66,6 +66,7 @@ public:
   void string(std::string_view value) {
     if (value.size() > MAX_STRING)
       throw Error("string exceeds binary format limit");
+
     integer(static_cast<std::uint32_t>(value.size()));
     bytes(value.data(), value.size());
   }
@@ -73,6 +74,7 @@ public:
   void weights(const std::vector<double> &values) {
     if (values.size() > MAX_WEIGHTS)
       throw Error("weight vector exceeds binary format limit");
+
     integer(static_cast<std::uint32_t>(values.size()));
     for (const auto value : values)
       real(value);
@@ -119,6 +121,7 @@ public:
     const auto size = integer<std::uint32_t>();
     if (size > MAX_STRING)
       throw Error(path_.string() + ": invalid string length");
+
     std::string value(size, '\0');
     bytes(value.data(), value.size());
     return value;
@@ -128,6 +131,7 @@ public:
     const auto size = integer<std::uint32_t>();
     if (size > MAX_WEIGHTS)
       throw Error(path_.string() + ": invalid weight count");
+
     std::vector<double> values(size);
     for (auto &value : values)
       value = real();
@@ -138,6 +142,7 @@ public:
     const auto value = integer<std::uint8_t>();
     if (value > max)
       throw Error(path_.string() + ": invalid " + std::string(name));
+
     return static_cast<Enum>(value);
   }
 
@@ -145,6 +150,7 @@ public:
     const auto value = integer<std::uint8_t>();
     if (value > 1)
       throw Error(path_.string() + ": invalid " + std::string(name));
+
     return value != 0;
   }
 
@@ -231,6 +237,7 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
       writer.real(pin.offset_x);
       writer.real(pin.offset_y);
     }
+
     writer.finish();
   });
 }
@@ -302,8 +309,10 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     const auto subrow_count = reader.integer<std::uint64_t>();
     check_count(subrow_count, reader, "subrow");
     row.subrows.reserve(static_cast<std::size_t>(subrow_count));
+
     for (std::uint64_t subrow = 0; subrow < subrow_count; ++subrow)
       row.subrows.push_back({reader.real(), reader.integer<std::uint64_t>()});
+
     board.rows.push_back(std::move(row));
   }
 
@@ -314,6 +323,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     net.pin_count = reader.integer<std::uint64_t>();
     if (net.first_pin > pin_count || net.pin_count > pin_count - net.first_pin)
       throw Error(input.string() + ": net pin range is out of bounds");
+
     net.weights = reader.weights();
     board.nets.push_back(std::move(net));
   }
@@ -332,6 +342,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
   }
 
   reader.require_end();
+
   return board;
 }
 

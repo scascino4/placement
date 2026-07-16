@@ -51,12 +51,15 @@ int main(int argc, char **argv) {
 
     const std::filesystem::path input(argv[arg]);
     const std::filesystem::path output(argv[arg + 1]);
+
     auto parser = placement::make_parser(input_format, {.placement_override = placement_override});
     auto serializer = placement::make_serializer(serialization_format);
     auto board = parser->parse(input);
     serializer->write(board, output);
+
     std::cout << board.name << ": " << board.cells.size() << " cells, " << board.nets.size() << " nets, " << board.pins.size() << " pins, "
               << board.rows.size() << " rows -> " << output << '\n';
+
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "placement_parse: " << error.what() << '\n';

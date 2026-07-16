@@ -31,6 +31,7 @@ template <typename Write> void atomic_output(const std::filesystem::path &output
       error.clear();
       std::filesystem::rename(temporary, output, error);
     }
+
     if (error)
       throw Error("cannot replace " + output.string() + ": " + error.message());
   } catch (...) {

@@ -15,6 +15,7 @@ PlacedRectangle placed_rectangle(const Cell &cell) {
   const auto &location = *cell.location;
   double width = location.width.value_or(cell.width);
   double height = location.height.value_or(cell.height);
+
   switch (location.orientation) {
   case Orientation::E:
   case Orientation::W:
@@ -25,6 +26,7 @@ PlacedRectangle placed_rectangle(const Cell &cell) {
   default:
     break;
   }
+
   return {location.x, location.y, width, height};
 }
 
@@ -45,6 +47,7 @@ struct Bounds {
 
   void include(const PlacedRectangle &rect) {
     validate(rect);
+
     min_x = std::min(min_x, rect.x);
     min_y = std::min(min_y, rect.y);
     max_x = std::max(max_x, rect.right());
@@ -106,6 +109,7 @@ void validate(const PlacedRectangle &rect) {
   for (const auto &row : rows)
     for (const auto &subrow : row.subrows)
       bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+
   return bounds;
 }
 
@@ -155,6 +159,7 @@ template <typename Grid, typename Function> void for_each_bin(Grid &grid, Functi
 template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t column, std::uint64_t row) {
   if (column >= grid.columns || row >= grid.rows)
     throw Error(std::string(GridTraits<Grid>::kind) + " bin index is out of bounds");
+
   return grid.bins[static_cast<std::size_t>(row * grid.columns + column)];
 }
 
@@ -202,6 +207,7 @@ void add_overlap(UtilizationGrid &grid, const PlacedRectangle &rect, Area area, 
 std::optional<double> UtilizationBin::utilization() const {
   if (placeable_area <= 0)
     return std::nullopt;
+
   return movable_area / placeable_area;
 }
 
@@ -210,6 +216,7 @@ const UtilizationBin &UtilizationGrid::at(std::uint64_t column, std::uint64_t ro
 double PinDensityBin::density() const {
   if (area <= 0)
     return 0;
+
   return static_cast<double>(pin_count) / area;
 }
 
@@ -218,6 +225,7 @@ const PinDensityBin &PinDensityGrid::at(std::uint64_t column, std::uint64_t row)
 std::optional<double> CellDensityBin::density() const {
   if (available_area <= 0)
     return std::nullopt;
+
   return movable_area / available_area;
 }
 
@@ -266,6 +274,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
   for (const auto &cell : cells) {
     if (!cell.location)
       continue;
+
     const auto rect = placed_rectangle(cell);
     if (cell.macro) {
       // Macros occupy row area regardless of whether they are movable in the
@@ -291,16 +300,21 @@ PinDensityGrid Board::pin_density(double bin_size) const {
   for (const auto &pin : pins) {
     if (pin.cell >= cells.size())
       throw Error("cannot calculate pin density with an invalid cell reference");
+
     const auto &cell = cells[pin.cell];
     if (!cell.location)
       continue;
+
     const auto point = pin_position(cell, pin);
     if (!std::isfinite(point.x) || !std::isfinite(point.y))
       throw Error("cannot calculate pin density for non-finite pin geometry");
+
     if (point.x < grid.min_x || point.x > grid.max_x || point.y < grid.min_y || point.y > grid.max_y)
       continue;
+
     const auto column = point.x == grid.max_x ? grid.columns - 1 : static_cast<std::uint64_t>((point.x - grid.min_x) / bin_size);
     const auto row = point.y == grid.max_y ? grid.rows - 1 : static_cast<std::uint64_t>((point.y - grid.min_y) / bin_size);
+
     ++grid.bins[static_cast<std::size_t>(row * grid.columns + column)].pin_count;
   }
 
@@ -314,6 +328,7 @@ CellDensityGrid Board::cell_density(double bin_size) const {
   for (const auto &cell : cells) {
     if (!cell.location || cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
       continue;
+
     if (movable(cell) && !cell.macro)
       add_overlap(grid, placed_rectangle(cell), [](CellDensityBin &bin, double overlap) { bin.movable_area += overlap; });
     else

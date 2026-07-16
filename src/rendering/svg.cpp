@@ -158,11 +158,14 @@ void write_paths(SvgOutput &output, const Board &board, CellClass classification
   for (const auto &cell : board.cells) {
     if (!cell.location || cell_class(cell) != classification)
       continue;
+
     const auto rect = placed_rectangle(cell);
     if (rect.width == 0 || rect.height == 0)
       continue;
+
     if (in_path == 0)
       output << "    <path class=\"" << css_class << "\" d=\"";
+
     output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
 
     ++in_path;
@@ -194,6 +197,7 @@ public:
       for (const auto &subrow : row.subrows)
         bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     include_cell_bounds(board, bounds);
+
     if (bounds.empty())
       throw Error("cannot render a board without geometry");
 
@@ -280,6 +284,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
       core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+
   if (core.empty())
     throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
 
@@ -386,6 +391,7 @@ public:
     for (const auto &bin : grid.bins)
       if (bin.pin_count != 0)
         nonzero_densities.push_back(bin.density());
+
     std::sort(nonzero_densities.begin(), nonzero_densities.end());
 
     double color_ceiling = 1.0;

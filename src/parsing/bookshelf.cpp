@@ -26,6 +26,7 @@ void trim(std::string &text) {
     text.clear();
     return;
   }
+
   const auto last = text.find_last_not_of(" \t\r\n");
   if (last + 1 < text.size())
     text.resize(last + 1);
@@ -90,8 +91,10 @@ template <typename T> [[nodiscard]] T number(std::string_view token, const Lines
   const auto *begin = token.data();
   const auto *end = begin + token.size();
   const auto [ptr, error] = std::from_chars(begin, end, value);
+
   if (error != std::errc{} || ptr != end)
     lines.fail("invalid " + std::string(description) + " '" + std::string(token) + "'");
+
   if constexpr (std::is_floating_point_v<T>) {
     if (!std::isfinite(value))
       lines.fail("non-finite " + std::string(description) + " is not allowed");
@@ -142,8 +145,10 @@ template <typename T> [[nodiscard]] T number(std::string_view token, const Lines
 void require_header(Lines &lines, std::string_view expected) {
   std::string line;
   std::vector<std::string_view> fields;
+
   if (!lines.next(line))
     lines.fail("empty component file");
+
   tokens(line, fields);
   if (fields.size() < 3 || lower(fields[0]) != "ucla" || lower(fields[1]) != expected)
     lines.fail("expected 'UCLA " + std::string(expected) + " <version>' header");
@@ -229,6 +234,7 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
     if (fields[0] == "NumTerminals") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumTerminals");
+
       declared_terminals = number<std::uint64_t>(fields[2], lines, "terminal count");
       continue;
     }
@@ -304,6 +310,7 @@ public:
         return index;
       slot = (slot + 1) & (slots_.size() - 1);
     }
+
     return std::nullopt;
   }
 
@@ -341,6 +348,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     if (fields[0] == "NumPins") {
       if (fields.size() < 3 || fields[1] != ":")
         lines.fail("malformed NumPins");
+
       declared_pins = number<std::uint64_t>(fields[2], lines, "pin count");
       board.pins.reserve(static_cast<std::size_t>(*declared_pins));
       continue;
@@ -364,12 +372,15 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     for (std::uint64_t i = 0; i < degree; ++i) {
       if (!lines.next(line))
         lines.fail("unexpected end inside net pins");
+
       tokens(line, fields);
       if (fields.size() < 2)
         lines.fail("pin record requires cell and direction");
+
       const auto cell = cell_index.find(fields[0]);
       if (!cell)
         lines.fail("pin references unknown cell '" + std::string(fields[0]) + "'");
+
       Pin pin;
       pin.cell = *cell;
       pin.direction = pin_direction(fields[1], lines);
@@ -379,6 +390,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
       } else if (fields.size() > 2) {
         lines.fail("pin offsets require ': <x> <y>'");
       }
+
       board.pins.push_back(pin);
     }
 
@@ -572,8 +584,10 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
       auto field = fields[i];
       if (field == ":" || field == "/")
         continue;
+
       if (field.starts_with('/'))
         field.remove_prefix(1);
+
       const auto normalized = lower(field);
       if (normalized == "fixed")
         location.status = PlacementStatus::Fixed;
@@ -622,6 +636,7 @@ public:
 
     parse_rows(components.rows, board);
     parse_placement(components.placement, board, cell_index);
+
     return board;
   }
 

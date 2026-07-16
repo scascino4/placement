@@ -46,11 +46,13 @@ int main(int argc, char **argv) {
       } else if (option == "--bin-size") {
         const std::string value(argv[arg++]);
         std::size_t consumed = 0;
+
         try {
           bin_size = std::stod(value, &consumed);
         } catch (const std::exception &) {
           throw placement::Error("invalid bin size '" + value + "'");
         }
+
         if (consumed != value.size())
           throw placement::Error("invalid bin size '" + value + "'");
       } else {
@@ -65,11 +67,14 @@ int main(int argc, char **argv) {
 
     const std::filesystem::path input(argv[arg]);
     const std::filesystem::path output(argv[arg + 1]);
+
     auto serializer = placement::make_serializer(serialization_format);
     auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size, .dark_mode = dark_mode});
     const auto board = serializer->read(input);
     renderer->render(board, output);
+
     std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output << '\n';
+
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "placement_render: " << error.what() << '\n';
