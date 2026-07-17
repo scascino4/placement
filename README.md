@@ -1,171 +1,127 @@
 # Placement parser and renderer
 
-This project converts Bookshelf row-based placement problems into a compact,
-format-neutral binary representation and renders that representation as SVG.
-It uses C++23 and the standard library only.
+A dependency-free C++23 pipeline for physical-design placement data. It parses
+Bookshelf row-based designs into a compact binary model, then renders that model
+as a placement view or a density heatmap.
 
-## Build and run
+| Placement | Utilization |
+| :---: | :---: |
+| ![Placed cells and macros](docs/images/placement.png) | ![Placement utilization heatmap](docs/images/utilization.png) |
+| **Pin density** | **Cell density** |
+| ![Pin-density heatmap](docs/images/pin-density.png) | ![Cell-density heatmap](docs/images/cell-density.png) |
+
+_The same adaptec1 placement rendered four ways._
+
+The parser, serializer, and renderer communicate only through the
+format-neutral `placement::Board` model. New input formats, persistent formats,
+and renderers can therefore be added independently.
+
+## Build
+
+The only build requirement is a C++23 compiler. The default Makefile uses
+`clang++`.
 
 ```sh
 make
-build/bin/placement_parse [--input-format bookshelf] \
-  [--placement-file placement.pl] \
-  [--serialization-format binary] input.dp.aux output.placebin
-build/bin/placement_render [--serialization-format binary] \
-  [--output-format svg|utilization-svg|pin-density-svg|cell-density-svg] [--bin-size size] [--dark-mode] output.placebin output.svg
 make test
-make valgrind
-make outputs
-# Run up to eight benchmark pipelines concurrently.
-make -j 8 outputs
 ```
 
-The benchmark inputs used by `make outputs` can be downloaded automatically:
+This creates:
+
+- `build/bin/placement_parse` — Bookshelf to binary
+- `build/bin/placement_render` — binary to SVG
+
+## Use
+
+Parse a Bookshelf AUX manifest:
 
 ```sh
-./scripts/prepare_data.sh
+build/bin/placement_parse design.dp.aux design.placebin
 ```
 
-This downloads ISPD 2005 and its movable-macro `ispd2005free` variant into
-`data`. Existing complete benchmark directories are left unchanged. To also
-generate DREAMPlace solutions, explicitly provide its launcher, Python
-environment, and directory of per-design configurations:
+Render the placement:
 
 ```sh
-./scripts/prepare_data.sh \
-  --placer /path/to/DREAMPlace/install/dreamplace/Placer.py \
-  --python /path/to/DREAMPlace/.venv/bin/python \
-  --config-dir /path/to/DREAMPlace/install/test
+build/bin/placement_render design.placebin placement.svg
 ```
 
-The configuration directory must contain `ispd2005/<design>.json` and
-`ispd2005free/<design>_allfree.json`. Temporary copies override only
-`aux_input` and `result_dir`; GPU selection, optimizer settings, seeds, macro
-placement, and every other placement choice remain unchanged. An executable
-wrapper can be supplied with `--dreamplace` instead of `--placer` and
-`--python`. DREAMPlace is never run without an explicit launcher and
-`--config-dir`. By default all eight designs in both families are placed; use
-`--design adaptec1` to run only one. Run `./scripts/prepare_data.sh --help` for
-all options.
+Render any of the available analysis views:
 
-`make outputs` parses the legalized `*.dp.aux` manifest in each
-`data/ispd2005` benchmark and creates `placement.placebin`, `placement.svg`,
-`utilization.svg`, `pin-density.svg`, and `cell-density.svg` under
-`out/ispd2005/<design>`. When a
-matching `data/ispd2005-dreamplace/<design>.gp.pl` exists, it creates the same
-five files under `out/ispd2005-dreamplace/<design>` using that placement instead.
-The movable-macro variants in `data/ispd2005free` use their original manifests
-to preserve macro identity while `<design>_allfree.pl` makes those macros
-movable. These files are starting configurations rather than completed
-placements: every standard cell has the placeholder location `(0, 0)`, so its
-placement and density views stack the standard cells at the origin and
-primarily describe the initial configuration. Fully placed results from
-`data/ispd2005free-dreamplace/<design>_allfree.gp.pl` are written under
-`out/ispd2005free-dreamplace/<design>`.
-It uses one job by default;
-pass `-j N` to process up to `N` benchmarks concurrently. Parsing and rendering
-remain ordered within each benchmark. `make clean` removes compiled files;
-`make clean-outputs` removes generated benchmark results.
-If benchmark data is missing or incomplete, `make outputs` exits with a message
-directing the user to `./scripts/prepare_data.sh`.
+```sh
+build/bin/placement_render --output-format utilization-svg \
+  design.placebin utilization.svg
+build/bin/placement_render --output-format pin-density-svg \
+  design.placebin pin-density.svg
+build/bin/placement_render --output-format cell-density-svg \
+  design.placebin cell-density.svg
+```
 
-`make valgrind` builds debug-symbol variants of both applications in
-`build/valgrind`, then checks parsing, placement, utilization, pin-density, and
-cell-density SVG rendering with Valgrind Memcheck using `adaptec1`, the
-smallest ISPD benchmark. It is an opt-in smoke test because it requires
-Valgrind and is substantially slower than `make test`.
-Temporary placement and SVG outputs are removed automatically. Set
-`VALGRIND_FLAGS` to replace the default Memcheck arguments or
-`VALGRIND_CXXFLAGS` to replace the debug build flags.
+Use `--bin-size SIZE` to set the heatmap bin width, `--dark-mode` to select the
+alternate palette, or `--placement-file placement.pl` during parsing to replace
+the placement named by the AUX manifest. Run either executable with `--help`
+for its complete syntax.
 
-## Architecture
+## Supported data
 
-`placement::Board` is independent of any input or output syntax. It stores
-cells and placements, rows and subrows, nets and flattened pins, directions,
-offsets, orientations, physical macro identity, fixed status, and weights.
-Macro identity is independent of placement status, so both fixed and movable
-macros retain the same physical classification. `Parser` and `Renderer` are
-backend interfaces selected through factories. `Serializer` independently
-maps a `Board` to and from a persistent representation. The current backends
-are Bookshelf input, binary serialization, and SVG output. Each application
-links only the backends it uses, and components communicate exclusively through
-`Board`.
+The Bookshelf backend reads `.aux`, `.nodes`, `.nets`, optional `.wts`, `.scl`,
+and `.pl` files. It preserves cells, macros, fixed objects, rows and subrows,
+nets, pins, weights, placements, orientations, and pin offsets. Parser errors
+include the source component and line number.
 
-The source tree follows those architectural boundaries:
+SVG output supports:
 
-- `include/placement/parsing` and `src/parsing` contain parser interfaces and
-  input-format backends.
-- `include/placement/rendering` and `src/rendering` contain renderer interfaces
-  and output-format backends.
-- `include/placement/serialization` defines the format-neutral serialization
-  interface, while `src/serialization` contains persistence backends.
-- `src/apps` contains the thin command-line entry points.
+- `svg`: rows, movable cells, macros, and fixed objects
+- `utilization-svg`: movable area relative to available legal row area
+- `pin-density-svg`: oriented pin locations, saturated at the 95th percentile
+- `cell-density-svg`: exact movable-object overlap per available bin area
 
-The Bookshelf reader consumes `.aux`, `.nodes`, `.nets`, optional `.wts`,
-`.scl`, and `.pl` components. It supports terminal variants, the eight spatial
-orientations, fixed variants, multiple subrows, optional placement dimensions,
-and I/O/bidirectional pins. Diagnostics identify the component and source line.
-Pass `--placement-file` to replace the `.pl` named by the AUX manifest while
-retaining all of its other components. Bookshelf `terminal` nodes provide the
-physical macro identity used by the row-based benchmarks; a placement override
-can therefore make those macros movable without erasing their classification.
+Heatmaps use green, yellow, and red for increasing density. Macro footprints
+remain visible, and detailed bin values are embedded as SVG tooltips. Every
+view uses the full design bounds, while heatmap bins remain confined to the
+legal placement region.
 
 ## Binary format
 
 All integers are fixed-width little-endian values and all real values are
-IEEE-754 binary64. The file contains:
+IEEE-754 binary64. A `PLACEBIN` file contains, in order:
 
-1. `PLACEBIN` magic.
+1. The eight-byte `PLACEBIN` magic.
 2. A length-prefixed design name and 64-bit cell, row, net, and pin counts.
 3. Cell records: name, dimensions, kind, macro flag, optional placement, and
    weights.
-4. Row records: geometry, orientation/symmetry, and subrows.
+4. Row records: geometry, orientation, symmetry, and subrows.
 5. Net records: name, flattened pin range, and weights.
 6. Pin records: cell index, direction, and two offsets.
 
-Strings and weight vectors have 32-bit lengths. Readers reject unknown enum
-values, invalid references/ranges, excessive counts, truncation, and
-trailing bytes. Writers use a temporary file and rename it only after a
-successful write.
+Strings and weight vectors have 32-bit lengths. Readers validate counts,
+references, enum values, truncation, and trailing data; writers replace outputs
+atomically.
 
-## SVG output
+## Benchmarks
 
-SVGs show row regions, movable cells, macros, fixed terminals, and
-non-interacting fixed objects with separate styles. The writer preserves the
-placement convention that Y increases upward and swaps dimensions for rotated
-orientations. Macros are white with contrasting outlines regardless of
-placement status. Cells are grouped into paths to keep multi-million-cell
-outputs manageable. Connectivity
-is retained in the binary but is intentionally not drawn in this first
-renderer. Light colors on a charcoal background are used by default; pass
-`--dark-mode` to any SVG output format for the alternate palette on a light
-background. Shared renderer palette tokens are defined in
-`include/placement/rendering/style.hpp` so renderers and output tests use the
-same semantic colors.
+Download the ISPD 2005 and movable-macro benchmark sets, then generate every
+binary and SVG view:
 
-The `utilization-svg` renderer divides the placement region into square bins
-and colors them from green (low utilization) through yellow to red (100% or
-greater). Utilization is movable-object overlap divided by legal row area
-after subtracting fixed-object overlap. Movable macros contribute utilization,
-while fixed macros reduce legal capacity. Macros remain visible with outlined,
-light interiors that mask bin colors over their footprints. With no
-`--bin-size`, the bin size is 1% of the placement region's longest dimension;
-an explicit positive size overrides that default.
+```sh
+./scripts/prepare_data.sh
+make -j 8 outputs
+```
 
-The `pin-density-svg` renderer assigns each placed pin to a square bin using
-the cell orientation and the pin's center-relative offset. Bin values are pins
-per square placement unit. Like utilization, colors run from green through
-yellow to red; pin-density colors saturate at the design's 95th percentile so
-isolated hotspots do not flatten the rest of the heatmap. Bins without legal
-placement area are gray. Macro footprints use the same opaque overlay as the
-utilization view. Exact pin counts and densities are embedded in SVG tooltips.
+Results are written under `out/`. If matching DREAMPlace `.gp.pl` files are
+available, `make outputs` also renders those placements. To generate them while
+preparing the data, supply an explicit DREAMPlace launcher and configuration
+directory; see `./scripts/prepare_data.sh --help`.
 
-The `cell-density-svg` renderer measures the exact geometric overlap of placed
-movable objects with each square bin. Movable macros contribute density, while
-fixed macros and other fixed physical objects reduce the bin's available area.
-Macros are shown with the same opaque light mask, and objects marked
-non-interacting are excluded. This is a post-placement density map rather than
-an exact reproduction of DREAMPlace's smoothed electrostatic objective, which
-also uses target-density scaling and synthetic filler cells during optimization.
-Movable-object area, available area, and density are embedded in SVG
-tooltips.
+Useful maintenance targets are `make valgrind`, `make clean`, and
+`make clean-outputs`.
+
+## Project layout
+
+```text
+include/placement/   Public model and extension interfaces
+src/parsing/         Bookshelf parser
+src/serialization/   Binary serializer
+src/rendering/       SVG renderers
+src/apps/            Thin command-line applications
+test/                Unit tests and synthetic fixtures
+```
