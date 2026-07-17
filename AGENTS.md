@@ -46,5 +46,4 @@ opt-in `make valgrind` smoke test when Valgrind is available.
 
 `data/`, `build/`, and `out/` are local/generated and ignored by Git. Do not
 modify benchmark inputs or commit generated binaries/SVGs. The binary format is
-documented in `README.md`; incompatible changes require a new major version,
-while backward-compatible additions require a minor-version update.
+documented in `README.md`.
