@@ -240,8 +240,7 @@ void write_cell_paths(SvgOutput &output, const Board &board, const std::vector<s
     output << "\"/>\n";
 }
 
-template <CellClass Classification>
-void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
+template <CellClass Classification> void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
   write_cell_paths<Classification, false>(output, board, classifications);
 }
 
@@ -343,6 +342,7 @@ template <> struct DensityPresentation<CellDensityGrid> {
 
 template <typename Grid> struct DensityLayout {
   Bounds core;
+  Bounds viewport;
   double width{};
   double height{};
   double bin_size{};
@@ -359,10 +359,17 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   if (core.empty())
     throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
 
-  const auto width = core.max_x - core.min_x;
-  const auto height = core.max_y - core.min_y;
-  const auto span = std::max(width, height);
-  return {core, width, height, options.bin_size.value_or(span / 100.0), span * 0.01, span / 8000.0};
+  Bounds viewport = core;
+  for (const auto &cell : board.cells)
+    if (cell.location)
+      viewport.include(placed_rectangle(cell));
+
+  const auto width = std::max(1.0, viewport.max_x - viewport.min_x);
+  const auto height = std::max(1.0, viewport.max_y - viewport.min_y);
+  const auto viewport_span = std::max(width, height);
+  const auto core_span = std::max(core.max_x - core.min_x, core.max_y - core.min_y);
+
+  return {core, viewport, width, height, options.bin_size.value_or(core_span / 100.0), viewport_span * 0.01, viewport_span / 8000.0};
 }
 
 template <typename Grid, typename Function> void write_grid_bins(SvgOutput &output, const Grid &grid, Function write_bin) {
@@ -403,7 +410,8 @@ void write_density_svg(const std::filesystem::path &path, const Board &board, co
            << "  </style>\n"
            << "  <rect class=\"background\" x=\"" << -layout.padding << "\" y=\"" << -layout.padding << "\" width=\""
            << layout.width + 2 * layout.padding << "\" height=\"" << layout.height + 2 * layout.padding << "\"/>\n"
-           << "  <g transform=\"translate(" << -layout.core.min_x << ' ' << layout.core.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+           << "  <g transform=\"translate(" << -layout.viewport.min_x << ' ' << layout.viewport.max_y
+           << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
     bins(output);
     if (movable_overlay)

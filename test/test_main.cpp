@@ -55,6 +55,18 @@ void write(const std::filesystem::path &path, std::string_view contents) {
   return contents.find(expected) != std::string_view::npos;
 }
 
+[[nodiscard]] std::string_view attribute_value(std::string_view contents, std::string_view name) {
+  const auto prefix = std::string(name) + "=\"";
+  const auto begin = contents.find(prefix);
+  if (begin == std::string_view::npos)
+    throw std::runtime_error("missing SVG attribute " + std::string(name));
+  const auto value_begin = begin + prefix.size();
+  const auto end = contents.find('"', value_begin);
+  if (end == std::string_view::npos)
+    throw std::runtime_error("unterminated SVG attribute " + std::string(name));
+  return contents.substr(value_begin, end - value_begin);
+}
+
 void fixture(const std::filesystem::path &directory) {
   write(directory / "tiny.aux", "# arbitrary component order\n"
                                 "RowBasedPlacement : tiny.pl tiny.scl tiny.wts tiny.nets tiny.nodes\n");
@@ -395,6 +407,7 @@ void svg_test() {
   check(contains_parts(utilization_contents, {".macro-overlay{fill:", default_style.surface}) &&
             contains_parts(utilization_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "utilization SVG macros mask bin colors");
+  check(attribute_value(utilization_contents, "viewBox") == attribute_value(contents, "viewBox"), "utilization SVG uses the full placement viewport");
 
   auto dark_utilization_renderer = placement::make_renderer("utilization-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_utilization_svg = temporary.path() / "utilization-dark.svg";
@@ -418,6 +431,7 @@ void svg_test() {
             contains_parts(pin_density_contents, {".macro-overlay{fill:", default_style.surface}) &&
             contains_parts(pin_density_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "pin density SVG masks macros consistently with utilization");
+  check(attribute_value(pin_density_contents, "viewBox") == attribute_value(contents, "viewBox"), "pin density SVG uses the full placement viewport");
 
   auto dark_pin_density_renderer = placement::make_renderer("pin-density-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_pin_density_svg = temporary.path() / "pin-density-dark.svg";
@@ -440,6 +454,8 @@ void svg_test() {
             cell_density_contents.find("class=\"macro-overlay\"") != std::string::npos &&
             contains_parts(cell_density_contents, {".fixed-ni-overlay{fill:", default_style.surface}),
         "cell density SVG masks macros and non-interacting objects");
+  check(attribute_value(cell_density_contents, "viewBox") == attribute_value(contents, "viewBox"),
+        "cell density SVG uses the full placement viewport");
 
   auto dark_cell_density_renderer = placement::make_renderer("cell-density-svg", {.bin_size = 5.0, .dark_mode = true});
   const auto dark_cell_density_svg = temporary.path() / "cell-density-dark.svg";
