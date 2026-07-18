@@ -1,8 +1,9 @@
 # Placement parser and renderer
 
 A dependency-free C++23 pipeline for physical-design placement data. It parses
-Bookshelf row-based and LEF/DEF designs into a compact binary model, then
-renders that model as a placement view or a density heatmap.
+Bookshelf row-based and LEF/DEF designs into a format-neutral in-memory model,
+serializes that model to a compact binary file, and renders the result as a
+placement view or density heatmap.
 
 | Placement | Utilization |
 | :---: | :---: |
@@ -18,8 +19,9 @@ and renderers can therefore be added independently.
 
 ## Build
 
-The only build requirement is a C++23 compiler. The default Makefile uses
-`clang++`.
+Building requires Make and a C++23 compiler; production code and tests use only
+the C++ standard library. The Makefile defaults to `clang++`, which can be
+overridden with `CXX`.
 
 ```sh
 make
@@ -39,7 +41,8 @@ Parse a Bookshelf AUX manifest:
 build/bin/placement_parse design.dp.aux design.placebin
 ```
 
-Parse a DEF design with its technology and cell-library LEFs:
+Parse a DEF design with one or more technology and cell-library LEFs (repeat
+`--lef-file` for each file):
 
 ```sh
 build/bin/placement_parse --input-format lefdef \
@@ -64,24 +67,30 @@ build/bin/placement_render --output-format cell-density-svg \
   design.placebin cell-density.svg
 ```
 
-Use `--bin-size SIZE` to set the heatmap bin width, `--dark-mode` to select the
-alternate palette, or `--placement-file placement.pl` during parsing to replace
-the placement named by the AUX manifest. Run either executable with `--help`
-for its complete syntax.
+Input defaults to Bookshelf and output defaults to the placement SVG. Use
+`--placement-file placement.pl` with Bookshelf input to replace the placement
+named by the AUX manifest. Use `--bin-size SIZE` to set the heatmap bin width
+or `--dark-mode` to select the alternate palette. The only serialization format
+currently implemented is `binary`. Run either executable with `--help` for its
+complete syntax.
 
 ## Supported data
 
 The Bookshelf backend reads `.aux`, `.nodes`, `.nets`, optional `.wts`, `.scl`,
-and `.pl` files. It preserves cells, macros, fixed objects, rows and subrows,
-nets, pins, weights, placements, orientations, and pin offsets. Parser errors
-include the source component and line number.
+and `.pl` files. It preserves cells, macros, fixed and non-interacting objects,
+rows and subrows, nets, pins, weights, placements, orientations, optional
+placement dimensions, and pin offsets.
 
 The LEF/DEF backend reads placement sites, cell and block macros, rectangular
 signal-pin geometry, rows, components, top-level pins, normal nets, and
 rectangular placement blockages. Geometry is normalized to microns and
 placement blockages are represented as gaps in row subrows. Routing layers,
-vias, tracks, special nets, obstructions, regions, and groups are recognized
-but omitted because they have no representation in `placement::Board`.
+vias, tracks, special nets, obstructions, regions, groups, and other routing
+detail are recognized but omitted because they have no representation in
+`placement::Board`.
+
+Both backends validate declared section counts and cross-references. Text-parser
+errors identify the source path and line.
 
 SVG output supports:
 
@@ -102,14 +111,16 @@ IEEE-754 binary64. A `PLACEBIN` file contains, in order:
 
 1. The eight-byte `PLACEBIN` magic.
 2. A length-prefixed design name and 64-bit cell, row, net, and pin counts.
-3. Cell records: name, dimensions, kind, macro flag, optional placement, and
+3. Cell records: name, dimensions, kind, macro flag, optional placement (with
+   coordinates, orientation, status, and optional overridden dimensions), and
    weights.
 4. Row records: geometry, orientation, symmetry, and subrows.
 5. Net records: name, flattened pin range, and weights.
 6. Pin records: cell index, direction, and two offsets.
 
-Strings and weight vectors have 32-bit lengths. Readers validate counts,
-references, enum values, truncation, and trailing data; writers replace outputs
+Strings and weight vectors have 32-bit lengths. The magic currently has no
+separate format-version field. Readers validate counts, references, enum and
+boolean values, truncation, and trailing data; writers replace outputs
 atomically.
 
 ## Benchmarks
@@ -122,10 +133,12 @@ generate every currently supported binary and SVG view:
 make -j 8 outputs
 ```
 
-Results are written under `out/`. If matching DREAMPlace `.gp.pl` files are
-available, `make outputs` also renders those placements. To generate them while
-preparing the data, supply an explicit DREAMPlace launcher and configuration
-directory; see `./scripts/prepare_data.sh --help`.
+Results are grouped by benchmark family under `out/ispd2005`,
+`out/ispd2005free`, and `out/ispd2015`. If matching DREAMPlace `.gp.pl` files
+are available, `make outputs` also renders them under the corresponding
+`*-dreamplace` directory. To generate those placements while preparing the
+data, supply an explicit DREAMPlace launcher and configuration directory; see
+`./scripts/prepare_data.sh --help`.
 
 The ISPD 2015 designs are installed under `data/ispd2015` in their original
 LEF, DEF, and Verilog form. `make outputs` parses their legalized DEF files and
@@ -138,9 +151,10 @@ Useful maintenance targets are `make valgrind`, `make clean`, and
 
 ```text
 include/placement/   Public model and extension interfaces
-src/parsing/         Parser factory, shared text utilities, and format backends
+src/parsing/         Bookshelf and LEF/DEF backends plus shared text utilities
 src/serialization/   Binary serializer
-src/rendering/       SVG renderers
+src/rendering/       Placement and density SVG renderers
 src/apps/            Thin command-line applications
-test/                Unit tests and synthetic fixtures
+test/                Component test suites and shared synthetic fixtures
+scripts/             Benchmark download and optional DREAMPlace preparation
 ```
