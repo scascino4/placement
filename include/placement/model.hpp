@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace placement {
@@ -11,6 +12,9 @@ enum class CellKind : std::uint8_t { Movable, Terminal, TerminalNonInteracting }
 enum class PlacementStatus : std::uint8_t { Movable, Fixed, FixedNonInteracting };
 enum class Orientation : std::uint8_t { N, E, S, W, FN, FE, FS, FW };
 enum class PinDirection : std::uint8_t { Unknown, Input, Output, Bidirectional };
+
+// Applies an orientation to coordinates relative to a placement anchor.
+[[nodiscard]] std::pair<double, double> orient_offset(double x, double y, Orientation orientation);
 
 struct Location {
   double x{};

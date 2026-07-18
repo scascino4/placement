@@ -1,12 +1,12 @@
 #include "placement/serialization/serializer.hpp"
 
 #include "../atomic_output.hpp"
+#include "../text.hpp"
 #include "placement/error.hpp"
 
 #include <algorithm>
 #include <array>
 #include <bit>
-#include <cctype>
 #include <concepts>
 #include <cstdint>
 #include <cstring>
@@ -388,8 +388,7 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
 }
 
 std::unique_ptr<Serializer> make_serializer(std::string_view format) {
-  std::string norm(format);
-  std::ranges::transform(norm, norm.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  const auto norm = detail::lower(format);
   if (norm == "binary")
     return std::make_unique<BinarySerializer>();
   throw Error("unsupported serialization format '" + std::string(format) + "'");

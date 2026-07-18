@@ -1,5 +1,6 @@
 #include "placement/model.hpp"
 
+#include "bounds.hpp"
 #include "placement/error.hpp"
 
 #include <algorithm>
@@ -7,10 +8,31 @@
 #include <limits>
 #include <numeric>
 #include <string_view>
-#include <tuple>
 #include <utility>
 
 namespace placement {
+std::pair<double, double> orient_offset(double x, double y, Orientation orientation) {
+  switch (orientation) {
+  case Orientation::N:
+    return {x, y};
+  case Orientation::E:
+    return {y, -x};
+  case Orientation::S:
+    return {-x, -y};
+  case Orientation::W:
+    return {-y, x};
+  case Orientation::FN:
+    return {-x, y};
+  case Orientation::FE:
+    return {y, x};
+  case Orientation::FS:
+    return {x, -y};
+  case Orientation::FW:
+    return {-y, -x};
+  }
+  std::unreachable();
+}
+
 PlacedRectangle placed_rectangle(const Cell &cell) {
   const auto &loc = *cell.location;
   double width = loc.width.value_or(cell.width);
@@ -33,24 +55,6 @@ PlacedRectangle placed_rectangle(const Cell &cell) {
 namespace {
 
 void validate(const PlacedRectangle &rect);
-
-struct Bounds {
-  double min_x{std::numeric_limits<double>::infinity()};
-  double min_y{std::numeric_limits<double>::infinity()};
-  double max_x{-std::numeric_limits<double>::infinity()};
-  double max_y{-std::numeric_limits<double>::infinity()};
-
-  void include(const PlacedRectangle &rect) {
-    validate(rect);
-
-    min_x = std::min(min_x, rect.x);
-    min_y = std::min(min_y, rect.y);
-    max_x = std::max(max_x, rect.right());
-    max_y = std::max(max_y, rect.top());
-  }
-
-  [[nodiscard]] bool empty() const { return !std::isfinite(min_x) || max_x <= min_x || max_y <= min_y; }
-};
 
 [[nodiscard]] bool movable(const Cell &cell) {
   return cell.kind == CellKind::Movable && cell.location && cell.location->status == PlacementStatus::Movable;
@@ -86,12 +90,15 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
     throw Error(std::string(kind) + " bin size must be finite and positive");
 
   // Establish the common placement extent for every density-grid kind.
-  Bounds box;
+  detail::Bounds box;
   for (const auto &row : rows)
-    for (const auto &subrow : row.subrows)
-      box.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+    for (const auto &subrow : row.subrows) {
+      const PlacedRectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
+      validate(rect);
+      box.include(rect);
+    }
 
-  if (box.empty())
+  if (!box.has_area())
     throw Error("cannot calculate " + std::string(kind) + " without a non-empty placement region");
 
   const auto cols = static_cast<std::uint64_t>(std::ceil((box.max_x - box.min_x) / bin_size));
@@ -260,34 +267,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
 
     // Transform the cell-relative pin offset into board coordinates.
     const auto rect = placed_rectangle(cell);
-    double x = pin.offset_x;
-    double y = pin.offset_y;
-    switch (cell.location->orientation) {
-    case Orientation::N:
-      break;
-    case Orientation::E:
-      std::tie(x, y) = std::pair{y, -x};
-      break;
-    case Orientation::S:
-      x = -x;
-      y = -y;
-      break;
-    case Orientation::W:
-      std::tie(x, y) = std::pair{-y, x};
-      break;
-    case Orientation::FN:
-      x = -x;
-      break;
-    case Orientation::FE:
-      std::swap(x, y);
-      break;
-    case Orientation::FS:
-      y = -y;
-      break;
-    case Orientation::FW:
-      std::tie(x, y) = std::pair{-y, -x};
-      break;
-    }
+    auto [x, y] = orient_offset(pin.offset_x, pin.offset_y, cell.location->orientation);
     x += rect.x + rect.width / 2.0;
     y += rect.y + rect.height / 2.0;
 

@@ -2,11 +2,12 @@
 #include "placement/rendering/style.hpp"
 
 #include "../atomic_output.hpp"
+#include "../bounds.hpp"
+#include "../text.hpp"
 #include "placement/error.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <concepts>
@@ -48,25 +49,14 @@ namespace {
   return res;
 }
 
-struct Bounds {
-  double min_x{std::numeric_limits<double>::infinity()};
-  double min_y{std::numeric_limits<double>::infinity()};
-  double max_x{-std::numeric_limits<double>::infinity()};
-  double max_y{-std::numeric_limits<double>::infinity()};
+using detail::Bounds;
 
-  void include(const PlacedRectangle &rect) {
-    if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0 ||
-        rect.height < 0)
-      throw Error("cannot render non-finite or negative geometry");
-
-    min_x = std::min(min_x, rect.x);
-    min_y = std::min(min_y, rect.y);
-    max_x = std::max(max_x, rect.right());
-    max_y = std::max(max_y, rect.top());
-  }
-
-  [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
-};
+void include_geometry(Bounds &bounds, const PlacedRectangle &rect) {
+  if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0 ||
+      rect.height < 0)
+    throw Error("cannot render non-finite or negative geometry");
+  bounds.include(rect);
+}
 
 enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 
@@ -171,7 +161,7 @@ constexpr std::uint8_t UNPLACED_CELL = std::numeric_limits<std::uint8_t>::max();
       continue;
 
     if (bounds)
-      bounds->include(placed_rectangle(cell));
+      include_geometry(*bounds, placed_rectangle(cell));
     classes[idx] = static_cast<std::uint8_t>(cell_class(cell));
   }
   return classes;
@@ -258,7 +248,7 @@ public:
     Bounds box;
     for (const auto &row : board.rows)
       for (const auto &subrow : row.subrows)
-        box.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+        include_geometry(box, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
     const auto classes = classify_cells(board, &box);
 
     if (box.empty())
@@ -347,7 +337,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   Bounds core;
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
-      core.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+      include_geometry(core, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
 
   if (core.empty())
     throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
@@ -355,7 +345,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   Bounds viewport = core;
   for (const auto &cell : board.cells)
     if (cell.location)
-      viewport.include(placed_rectangle(cell));
+      include_geometry(viewport, placed_rectangle(cell));
 
   const auto width = std::max(1.0, viewport.max_x - viewport.min_x);
   const auto height = std::max(1.0, viewport.max_y - viewport.min_y);
@@ -542,8 +532,7 @@ private:
 } // namespace
 
 std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions opts) {
-  std::string norm(format);
-  std::ranges::transform(norm, norm.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  const auto norm = detail::lower(format);
   if (norm == "svg")
     return std::make_unique<SvgWriter>(opts);
   if (norm == "utilization-svg")

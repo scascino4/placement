@@ -1,12 +1,11 @@
 #pragma once
 
+#include "../text.hpp"
 #include "placement/error.hpp"
 #include "placement/model.hpp"
 
-#include <algorithm>
 #include <array>
 #include <bit>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -21,11 +20,7 @@
 
 namespace placement::parsing_detail {
 
-[[nodiscard]] inline std::string lower(std::string_view value) {
-  std::string res(value);
-  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-  return res;
-}
+using detail::lower;
 
 [[nodiscard]] inline bool ascii_iequal(std::string_view lhs, std::string_view rhs) {
   if (lhs.size() != rhs.size())

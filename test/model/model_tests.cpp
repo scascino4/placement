@@ -11,6 +11,22 @@ Row row(double width, double height) {
   return res;
 }
 
+void orient_offset_test() {
+  const auto check_offset = [](Orientation orientation, double expected_x, double expected_y) {
+    const auto [x, y] = orient_offset(2, 3, orientation);
+    check(x == expected_x && y == expected_y, "oriented offset");
+  };
+
+  check_offset(Orientation::N, 2, 3);
+  check_offset(Orientation::E, 3, -2);
+  check_offset(Orientation::S, -2, -3);
+  check_offset(Orientation::W, -3, 2);
+  check_offset(Orientation::FN, -2, 3);
+  check_offset(Orientation::FE, 3, 2);
+  check_offset(Orientation::FS, 2, -3);
+  check_offset(Orientation::FW, -3, -2);
+}
+
 void placed_rectangle_test() {
   Cell cell;
   cell.width = 3;
@@ -156,7 +172,8 @@ void cell_density_test() {
 } // namespace
 
 Tests model_tests() {
-  return {{"oriented cell footprint", placed_rectangle_test},
+  return {{"oriented offset", orient_offset_test},
+          {"oriented cell footprint", placed_rectangle_test},
           {"utilization grid", utilization_test},
           {"pin density grid", pin_density_test},
           {"cell density grid", cell_density_test}};

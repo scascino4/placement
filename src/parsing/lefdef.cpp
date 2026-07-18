@@ -1,5 +1,6 @@
 #include "placement/parsing/parser.hpp"
 
+#include "../bounds.hpp"
 #include "common.hpp"
 
 #include "placement/error.hpp"
@@ -16,7 +17,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -270,21 +270,7 @@ void skip_counted_section(Tokens &tokens, CountRequirement requirement = CountRe
     skip_statement(tokens);
 }
 
-struct Bounds {
-  double min_x{std::numeric_limits<double>::infinity()};
-  double min_y{std::numeric_limits<double>::infinity()};
-  double max_x{-std::numeric_limits<double>::infinity()};
-  double max_y{-std::numeric_limits<double>::infinity()};
-
-  void include(double x0, double y0, double x1, double y1) {
-    min_x = std::min({min_x, x0, x1});
-    min_y = std::min({min_y, y0, y1});
-    max_x = std::max({max_x, x0, x1});
-    max_y = std::max({max_y, y0, y1});
-  }
-
-  [[nodiscard]] bool empty() const { return !std::isfinite(min_x); }
-};
+using detail::Bounds;
 
 struct SiteDefinition {
   std::string name;
@@ -852,34 +838,7 @@ private:
         tokens_.fail("top-level pin '" + cell.name + "' has no rectangular geometry");
       if (anchor) {
         // Rotate the pin-shape center around its DEF placement anchor.
-        double dx = (geometry.min_x + geometry.max_x) / 2.0;
-        double dy = (geometry.min_y + geometry.max_y) / 2.0;
-        switch (anchor->orientation) {
-        case Orientation::N:
-          break;
-        case Orientation::E:
-          std::tie(dx, dy) = std::pair{dy, -dx};
-          break;
-        case Orientation::S:
-          dx = -dx;
-          dy = -dy;
-          break;
-        case Orientation::W:
-          std::tie(dx, dy) = std::pair{-dy, dx};
-          break;
-        case Orientation::FN:
-          dx = -dx;
-          break;
-        case Orientation::FE:
-          std::swap(dx, dy);
-          break;
-        case Orientation::FS:
-          dy = -dy;
-          break;
-        case Orientation::FW:
-          std::tie(dx, dy) = std::pair{-dy, -dx};
-          break;
-        }
+        const auto [dx, dy] = orient_offset((geometry.min_x + geometry.max_x) / 2.0, (geometry.min_y + geometry.max_y) / 2.0, anchor->orientation);
         anchor->x += dx;
         anchor->y += dy;
         anchor->orientation = Orientation::N;

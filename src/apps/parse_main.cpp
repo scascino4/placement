@@ -2,7 +2,8 @@
 #include "placement/parsing/parser.hpp"
 #include "placement/serialization/serializer.hpp"
 
-#include <cctype>
+#include "../text.hpp"
+
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -62,9 +63,7 @@ int main(int argc, char **argv) {
     const std::filesystem::path out(argv[arg + 1]);
 
     // Normalize and select the input backend at the only decision point.
-    std::string norm(in_fmt);
-    for (auto &ch : norm)
-      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    const auto norm = placement::detail::lower(in_fmt);
 
     InputFormat fmt;
     if (norm == "bookshelf")
