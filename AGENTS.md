@@ -36,7 +36,9 @@ opt-in `make valgrind` smoke test when Valgrind is available.
   backends; their public interfaces mirror this structure under
   `include/placement`.
 - `src/apps` contains the two `*_main.cpp` files, which should remain thin CLIs.
-- Tests and synthetic Bookshelf fixtures are in `test/test_main.cpp`.
+- Tests are split by component under `test/parsing`, `test/model`,
+  `test/serialization`, and `test/rendering`; shared synthetic fixtures and
+  assertions are in `test/support.cpp` and `test/support.hpp`.
 - Keep production code and tests limited to the C++23 standard library.
 - Follow `.clang-format`, retain path-and-line parser diagnostics, validate all
   declared counts and references, and use atomic temporary-file output.

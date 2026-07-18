@@ -19,13 +19,15 @@ SERIALIZATION_OBJECTS := $(SERIALIZATION_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
 MODEL_OBJECTS := $(MODEL_SOURCES:src/%.cpp=$(OBJ_DIR)/%.o)
 PARSE_OBJECT := $(OBJ_DIR)/apps/parse_main.o
 RENDER_OBJECT := $(OBJ_DIR)/apps/render_main.o
-TEST_OBJECT := $(OBJ_DIR)/test_main.o
+TEST_SOURCES := $(wildcard test/*.cpp test/*/*.cpp)
+TEST_OBJECTS := $(TEST_SOURCES:test/%.cpp=$(OBJ_DIR)/test/%.o)
 
 FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
 	include/placement/*/*.hpp \
 	src/*.cpp src/*.hpp \
 	src/*/*.cpp src/*/*.hpp \
-	test/*.cpp)
+	test/*.cpp test/*.hpp \
+	test/*/*.cpp test/*/*.hpp)
 
 PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
@@ -65,14 +67,14 @@ $(RENDER_BIN): $(RENDERING_OBJECTS) $(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(TEST_BIN): $(PARSING_OBJECTS) $(RENDERING_OBJECTS) \
-		$(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(TEST_OBJECT) | $(BIN_DIR)
+		$(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(TEST_OBJECTS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 $(OBJ_DIR)/%.o: src/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
-$(OBJ_DIR)/test_main.o: test/test_main.cpp
+$(OBJ_DIR)/test/%.o: test/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
@@ -205,4 +207,4 @@ clean-outputs:
 
 -include $(PARSING_OBJECTS:.o=.d) $(RENDERING_OBJECTS:.o=.d) \
 	$(SERIALIZATION_OBJECTS:.o=.d) $(MODEL_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
-	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECT:.o=.d)
+	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECTS:.o=.d)
