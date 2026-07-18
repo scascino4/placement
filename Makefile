@@ -8,7 +8,7 @@ BUILD_DIR := build
 OBJ_DIR := $(BUILD_DIR)/obj
 BIN_DIR := $(BUILD_DIR)/bin
 
-PARSING_SOURCES := src/parsing/bookshelf.cpp
+PARSING_SOURCES := src/parsing/bookshelf.cpp src/parsing/lefdef.cpp
 RENDERING_SOURCES := src/rendering/svg.cpp
 SERIALIZATION_SOURCES := src/serialization/binary.cpp
 MODEL_SOURCES := src/model.cpp
@@ -43,10 +43,18 @@ FREE_OUTPUT_TARGETS := $(addprefix free-output-,$(FREE_OUTPUT_DESIGNS))
 FREE_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005free-dreamplace/*_allfree.gp.pl)
 FREE_DREAMPLACE_DESIGNS := $(patsubst %_allfree.gp.pl,%,$(notdir $(FREE_DREAMPLACE_PL_FILES)))
 FREE_DREAMPLACE_OUTPUT_TARGETS := $(addprefix free-dreamplace-output-,$(FREE_DREAMPLACE_DESIGNS))
+ISPD2015_DESIGNS := mgc_des_perf_1 mgc_des_perf_a mgc_des_perf_b mgc_edit_dist_a \
+	mgc_fft_1 mgc_fft_2 mgc_fft_a mgc_fft_b \
+	mgc_matrix_mult_1 mgc_matrix_mult_2 mgc_matrix_mult_a mgc_matrix_mult_b \
+	mgc_matrix_mult_c mgc_pci_bridge32_a mgc_pci_bridge32_b \
+	mgc_superblue11_a mgc_superblue12 mgc_superblue14 mgc_superblue16_a \
+	mgc_superblue19
+ISPD2015_OUTPUT_TARGETS := $(addprefix ispd2015-output-,$(ISPD2015_DESIGNS))
 
 .PHONY: all test valgrind check-data outputs $(OUTPUT_TARGETS) \
 	$(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
-	$(FREE_DREAMPLACE_OUTPUT_TARGETS) clean clean-outputs format
+	$(FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS) \
+	clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
 
@@ -89,6 +97,14 @@ check-data:
 			if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
 		done; \
 	done; \
+	if [ -z "$$missing" ]; then \
+		for design in $(ISPD2015_DESIGNS); do \
+			for file in tech.lef cells.lef after_legalized.ntup.fix.def; do \
+				path="data/ispd2015/$$design/$$file"; \
+				if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
+			done; \
+		done; \
+	fi; \
 	if [ -n "$$missing" ]; then \
 		echo "Benchmark data is missing or incomplete: $$missing" >&2; \
 		echo "Run ./scripts/prepare_data.sh and retry make outputs." >&2; \
@@ -96,10 +112,11 @@ check-data:
 	fi
 
 outputs: check-data all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
-	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS)
+	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS) \
+	$(ISPD2015_OUTPUT_TARGETS)
 
 $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
-	$(FREE_DREAMPLACE_OUTPUT_TARGETS): | check-data
+	$(FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS): | check-data
 
 $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
@@ -155,6 +172,25 @@ $(FREE_DREAMPLACE_OUTPUT_TARGETS): free-dreamplace-output-%: $(PARSE_BIN) $(REND
 	$(RENDER_BIN) --output-format cell-density-svg \
 		"out/ispd2005free-dreamplace/$*/placement.placebin" \
 		"out/ispd2005free-dreamplace/$*/cell-density.svg"
+
+$(ISPD2015_OUTPUT_TARGETS): ispd2015-output-%: $(PARSE_BIN) $(RENDER_BIN)
+	@mkdir -p "out/ispd2015/$*"
+	$(PARSE_BIN) --input-format lefdef \
+		--lef-file "data/ispd2015/$*/tech.lef" \
+		--lef-file "data/ispd2015/$*/cells.lef" \
+		"data/ispd2015/$*/after_legalized.ntup.fix.def" \
+		"out/ispd2015/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2015/$*/placement.placebin" \
+		"out/ispd2015/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg \
+		"out/ispd2015/$*/placement.placebin" \
+		"out/ispd2015/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg \
+		"out/ispd2015/$*/placement.placebin" \
+		"out/ispd2015/$*/pin-density.svg"
+	$(RENDER_BIN) --output-format cell-density-svg \
+		"out/ispd2015/$*/placement.placebin" \
+		"out/ispd2015/$*/cell-density.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \

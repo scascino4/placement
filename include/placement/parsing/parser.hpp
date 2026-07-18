@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
-#include <string_view>
+#include <vector>
 
 namespace placement {
 
@@ -15,10 +15,17 @@ public:
   [[nodiscard]] virtual Board parse(const std::filesystem::path &input) const = 0;
 };
 
-struct ParseOptions {
+struct BookshelfParseOptions {
   std::optional<std::filesystem::path> placement_override;
 };
 
-[[nodiscard]] std::unique_ptr<Parser> make_parser(std::string_view format, ParseOptions options = {});
+struct LefDefParseOptions {
+  std::vector<std::filesystem::path> lef_files;
+};
+
+// The option type selects the backend and prevents backend-specific inputs from
+// being mixed in one loosely typed configuration object.
+[[nodiscard]] std::unique_ptr<Parser> make_parser(BookshelfParseOptions options = {});
+[[nodiscard]] std::unique_ptr<Parser> make_parser(LefDefParseOptions options);
 
 } // namespace placement

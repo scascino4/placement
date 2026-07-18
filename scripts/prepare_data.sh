@@ -4,9 +4,23 @@ set -euo pipefail
 
 readonly ISPD2005_DEFAULT_URL="https://www.cerc.utexas.edu/~zixuan/ispd2005dp.tar.xz"
 readonly ISPD2005FREE_DEFAULT_URL="https://www.dropbox.com/scl/fi/01jvzui9hv0aa4krnd8lm/ispd2005free.zip?rlkey=ijwspusl9onncnsu5j4na4tqe&st=l44f3dnw&dl=1"
-readonly -a ALL_DESIGNS=(
+readonly ISPD2015_DEFAULT_URL="https://www.cerc.utexas.edu/~zixuan/ispd2015dp.tar.xz"
+readonly -a ISPD2005_DESIGNS=(
     adaptec1 adaptec2 adaptec3 adaptec4
     bigblue1 bigblue2 bigblue3 bigblue4
+)
+readonly -a ISPD2015_DESIGNS=(
+    mgc_des_perf_1 mgc_des_perf_a mgc_des_perf_b mgc_edit_dist_a
+    mgc_fft_1 mgc_fft_2 mgc_fft_a mgc_fft_b
+    mgc_matrix_mult_1 mgc_matrix_mult_2 mgc_matrix_mult_a
+    mgc_matrix_mult_b mgc_matrix_mult_c
+    mgc_pci_bridge32_a mgc_pci_bridge32_b
+    mgc_superblue11_a mgc_superblue12 mgc_superblue14
+    mgc_superblue16_a mgc_superblue19
+)
+readonly -a ISPD2015_FILES=(
+    tech.lef cells.lef floorplan.def after_legalized.ntup.fix.def
+    design.v placement.constraints
 )
 
 die() {
@@ -18,8 +32,10 @@ usage() {
     cat <<'EOF'
 Usage: scripts/prepare_data.sh [options]
 
-Download the ISPD 2005 and ISPD 2005 free-macro benchmarks into data/.
-DREAMPlace is run only when an explicit launcher and configuration are given.
+Download the ISPD 2005, ISPD 2005 free-macro, and ISPD 2015 benchmarks
+into data/. DREAMPlace is run only when an explicit launcher and configuration
+are given. ISPD 2015 is prepared for the LEF/DEF parser but is not passed to
+DREAMPlace.
 
 Options:
   --placer PATH      Path to dreamplace/Placer.py
@@ -36,6 +52,7 @@ overridden in temporary copies of those files.
 Environment:
   ISPD2005_URL       Override the ISPD 2005 archive URL
   ISPD2005FREE_URL   Override the ISPD 2005 free-macro archive URL
+  ISPD2015_URL       Override the ISPD 2015 archive URL
 EOF
 }
 
@@ -46,7 +63,7 @@ require_command() {
 is_known_design() {
     local candidate=$1
     local design
-    for design in "${ALL_DESIGNS[@]}"; do
+    for design in "${ISPD2005_DESIGNS[@]}"; do
         if [[ $candidate == "$design" ]]; then
             return 0
         fi
@@ -54,12 +71,22 @@ is_known_design() {
     return 1
 }
 
-family_is_complete() {
+ispd2005_family_is_complete() {
     local root=$1
     local suffix=$2
     local design
-    for design in "${ALL_DESIGNS[@]}"; do
+    for design in "${ISPD2005_DESIGNS[@]}"; do
         [[ -f "$root/$design/${design}${suffix}" ]] || return 1
+    done
+}
+
+ispd2015_is_complete() {
+    local root=$1
+    local design file
+    for design in "${ISPD2015_DESIGNS[@]}"; do
+        for file in "${ISPD2015_FILES[@]}"; do
+            [[ -f "$root/$design/$file" ]] || return 1
+        done
     done
 }
 
@@ -94,6 +121,26 @@ download_ispd2005() {
     tar -xJf "$archive" -C "$extraction"
     source=$(find_family_root "$extraction" "adaptec1.dp.aux") || \
         die "ISPD 2005 archive does not contain the expected benchmarks"
+    install_family "$source" "$destination"
+}
+
+download_ispd2015() {
+    local destination=$1
+    local work=$2
+    local archive="$work/ispd2015dp.tar.xz"
+    local extraction="$work/ispd2015-extract"
+    local marker_path source
+
+    echo "Downloading ISPD 2015..."
+    mkdir -p "$extraction"
+    curl --fail --location --retry 3 --output "$archive" \
+        "${ISPD2015_URL:-$ISPD2015_DEFAULT_URL}"
+    tar -xJf "$archive" -C "$extraction"
+    marker_path=$(find "$extraction" -type f \
+        -path '*/mgc_fft_1/floorplan.def' -print -quit)
+    [[ -n $marker_path ]] || \
+        die "ISPD 2015 archive does not contain the expected benchmarks"
+    source=$(dirname "$(dirname "$marker_path")")
     install_family "$source" "$destination"
 }
 
@@ -266,7 +313,7 @@ while (($#)); do
 done
 
 if ((${#selected_designs[@]} == 0)); then
-    selected_designs=("${ALL_DESIGNS[@]}")
+    selected_designs=("${ISPD2005_DESIGNS[@]}")
 fi
 
 require_command curl
@@ -277,22 +324,30 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/placement-data.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-if family_is_complete "$repo_root/data/ispd2005" ".dp.aux"; then
+if ispd2005_family_is_complete "$repo_root/data/ispd2005" ".dp.aux"; then
     echo "ISPD 2005 benchmarks are already present."
 else
     download_ispd2005 "$repo_root/data/ispd2005" "$work"
 fi
 
-if family_is_complete "$repo_root/data/ispd2005free" "_allfree.aux"; then
+if ispd2005_family_is_complete "$repo_root/data/ispd2005free" "_allfree.aux"; then
     echo "ISPD 2005 free-macro benchmarks are already present."
 else
     download_ispd2005free "$repo_root/data/ispd2005free" "$work"
 fi
 
-family_is_complete "$repo_root/data/ispd2005" ".dp.aux" || \
+if ispd2015_is_complete "$repo_root/data/ispd2015"; then
+    echo "ISPD 2015 benchmarks are already present."
+else
+    download_ispd2015 "$repo_root/data/ispd2015" "$work"
+fi
+
+ispd2005_family_is_complete "$repo_root/data/ispd2005" ".dp.aux" || \
     die "ISPD 2005 installation is incomplete"
-family_is_complete "$repo_root/data/ispd2005free" "_allfree.aux" || \
+ispd2005_family_is_complete "$repo_root/data/ispd2005free" "_allfree.aux" || \
     die "ISPD 2005 free-macro installation is incomplete"
+ispd2015_is_complete "$repo_root/data/ispd2015" || \
+    die "ISPD 2015 installation is incomplete"
 
 if [[ -z $dreamplace && -z $placer && -z $python && -z $config_dir ]]; then
     echo "Benchmarks are ready. DREAMPlace was not requested."

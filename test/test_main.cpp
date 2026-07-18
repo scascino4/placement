@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -90,6 +91,80 @@ void fixture(const std::filesystem::path &directory) {
                                "c 40 10 : FW /FIXED_NI DIMS=(7,8)\n");
 }
 
+void lefdef_fixture(const std::filesystem::path &directory) {
+  write(directory / "tech.lef", "VERSION 5.8 ;\n"
+                                "UNITS DATABASE MICRONS 1000 ; END UNITS\n"
+                                "PROPERTYDEFINITIONS\n"
+                                "  LIBRARY NOTE STRING ;\n"
+                                "END PROPERTYDEFINITIONS\n"
+                                "SITE core\n"
+                                "  CLASS CORE ;\n"
+                                "  SYMMETRY X Y ;\n"
+                                "  SIZE 1 BY 2 ;\n"
+                                "END core\n"
+                                "END LIBRARY\n");
+  write(directory / "cells.lef", "VERSION 5.8 ;\n"
+                                 "MACRO NAND\n"
+                                 "  PROPERTY NOTE \"embedded ; END NAND\" ;\n"
+                                 "  CLASS CORE ;\n"
+                                 "  ORIGIN 0 0 ;\n"
+                                 "  SIZE 2 BY 2 ;\n"
+                                 "  SITE core ;\n"
+                                 "  PIN A DIRECTION INPUT ;\n"
+                                 "    PORT\n"
+                                 "      LAYER metal1 ;\n"
+                                 "      RECT 0 0.5 0.5 1.5 ;\n"
+                                 "    END\n"
+                                 "  END A\n"
+                                 "  PIN Y\n"
+                                 "    DIRECTION OUTPUT ;\n"
+                                 "    USE SIGNAL ;\n"
+                                 "    PORT\n"
+                                 "      LAYER metal1 ;\n"
+                                 "      RECT 1.5 0.5 1.75 1.5 ;\n"
+                                 "      RECT 1.75 0.75 2 1.25 ;\n"
+                                 "    END\n"
+                                 "  END Y\n"
+                                 "END NAND\n"
+                                 "MACRO BLOCK\n"
+                                 "  CLASS BLOCK ;\n"
+                                 "  ORIGIN 0 0 ;\n"
+                                 "  SIZE 4 BY 4 ;\n"
+                                 "  PIN B DIRECTION INPUT ;\n"
+                                 "    PORT LAYER metal1 ; RECT 0 0 1 1 ; END\n"
+                                 "  END B\n"
+                                 "  OBS LAYER metal1 ; RECT 0 0 4 4 ; END\n"
+                                 "END BLOCK\n"
+                                 "END LIBRARY\n");
+  write(directory / "design.def", "# compact LEF/DEF fixture\n"
+                                  "VERSION 5.8 ;\n"
+                                  "DESIGN tiny_def ;\n"
+                                  "UNITS DISTANCE MICRONS 100 ;\n"
+                                  "DIEAREA ( 0 0 ) ( 1000 400 ) ;\n"
+                                  "ROW row0 core 0 0 FS DO 10 BY 1 STEP 100 0 ;\n"
+                                  "TRACKS X 0 DO 10 STEP 100 LAYER metal1 ;\n"
+                                  "COMPONENTS 2 ;\n"
+                                  "  - u1 NAND + PLACED ( 100 0 ) FS ;\n"
+                                  "  - block BLOCK + FIXED ( 600 0 ) N ;\n"
+                                  "END COMPONENTS\n"
+                                  "PINS 1 ;\n"
+                                  "  - IN + NET n1\n"
+                                  "    + DIRECTION INPUT\n"
+                                  "    + PLACED ( 0 100 ) N\n"
+                                  "    + LAYER metal1 ( -10 -10 ) ( 10 10 ) ;\n"
+                                  "END PINS\n"
+                                  "BLOCKAGES 1 ;\n"
+                                  "  - PLACEMENT RECT ( 300 0 ) ( 500 200 ) ;\n"
+                                  "END BLOCKAGES\n"
+                                  "SPECIALNETS 0 ;\n"
+                                  "END SPECIALNETS\n"
+                                  "NETS 2 ;\n"
+                                  "  - n1 ( PIN IN ) ( u1 A ) ;\n"
+                                  "  - n2 ( u1 Y ) ( block B ) + NONDEFAULTRULE DWDS ;\n"
+                                  "END NETS\n"
+                                  "END DESIGN\n");
+}
+
 void check(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
@@ -108,8 +183,15 @@ template <typename Function> void expect_error(Function &&function, std::string_
 }
 
 [[nodiscard]] placement::Board parse_fixture(const std::filesystem::path &directory) {
-  auto parser = placement::make_parser("BOOKSHELF");
+  auto parser = placement::make_parser();
   return parser->parse(directory / "tiny.aux");
+}
+
+[[nodiscard]] placement::Board parse_lefdef_fixture(const std::filesystem::path &directory) {
+  placement::LefDefParseOptions options;
+  options.lef_files = {directory / "tech.lef", directory / "cells.lef"};
+  auto parser = placement::make_parser(std::move(options));
+  return parser->parse(directory / "design.def");
 }
 
 void parser_test() {
@@ -134,6 +216,67 @@ void parser_test() {
   check(board.pins[2].direction == placement::PinDirection::Bidirectional, "bidirectional pin");
   check(board.rows[0].subrows.size() == 2 && board.rows[0].site_width == 2, "multiple subrows and default site width");
   check(board.rows[0].symmetry == 7, "row symmetry");
+}
+
+void lefdef_parser_test() {
+  TemporaryDirectory temporary;
+  lefdef_fixture(temporary.path());
+  const auto board = parse_lefdef_fixture(temporary.path());
+  check(board.name == "tiny_def", "LEF/DEF design name");
+  check(board.cells.size() == 3 && board.rows.size() == 1, "LEF/DEF cell and row counts");
+  check(board.nets.size() == 2 && board.pins.size() == 4, "LEF/DEF net and endpoint counts");
+  check(board.cells[0].width == 2 && board.cells[0].height == 2 && !board.cells[0].macro, "LEF standard-cell geometry");
+  check(board.cells[0].location->x == 1 && board.cells[0].location->orientation == placement::Orientation::FS, "DEF component placement and units");
+  check(board.cells[1].macro && board.cells[1].location->status == placement::PlacementStatus::Fixed, "LEF block macro identity");
+  check(board.cells[2].kind == placement::CellKind::TerminalNonInteracting &&
+            board.cells[2].location->status == placement::PlacementStatus::FixedNonInteracting && board.cells[2].location->x == 0 &&
+            board.cells[2].location->y == 1,
+        "DEF top-level pin mapping");
+  check(board.rows[0].site_width == 1 && board.rows[0].site_spacing == 1 && board.rows[0].height == 2 && board.rows[0].symmetry == 3,
+        "LEF site maps to DEF row");
+  check(board.rows[0].subrows.size() == 2 && board.rows[0].subrows[0].origin == 0 && board.rows[0].subrows[0].site_count == 3 &&
+            board.rows[0].subrows[1].origin == 5 && board.rows[0].subrows[1].site_count == 5,
+        "placement blockages split row capacity");
+  check(board.pins[0].cell == 2 && board.pins[0].direction == placement::PinDirection::Input, "top-level pin endpoint");
+  check(board.pins[1].cell == 0 && board.pins[1].direction == placement::PinDirection::Input && close(board.pins[1].offset_x, -0.75),
+        "LEF input pin offset");
+  check(board.pins[2].direction == placement::PinDirection::Output && close(board.pins[2].offset_x, 0.75), "multi-rectangle LEF output pin offset");
+}
+
+void malformed_lefdef_parser_test() {
+  TemporaryDirectory temporary;
+  lefdef_fixture(temporary.path());
+  auto contents = read(temporary.path() / "design.def");
+  auto position = contents.find("u1 NAND");
+  check(position != std::string::npos, "fixture component exists");
+  contents.replace(position, std::string_view("u1 NAND").size(), "u1 MISSING");
+  write(temporary.path() / "design.def", contents);
+  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "component references unknown macro 'MISSING'");
+
+  lefdef_fixture(temporary.path());
+  contents = read(temporary.path() / "design.def");
+  position = contents.find("( u1 A )");
+  check(position != std::string::npos, "fixture endpoint exists");
+  contents.replace(position, std::string_view("( u1 A )").size(), "( u1 MISSING )");
+  write(temporary.path() / "design.def", contents);
+  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "component pin references unknown macro pin 'MISSING'");
+
+  lefdef_fixture(temporary.path());
+  contents = read(temporary.path() / "design.def");
+  position = contents.find("COMPONENTS 2");
+  check(position != std::string::npos, "fixture component count exists");
+  contents.replace(position, std::string_view("COMPONENTS 2").size(), "COMPONENTS 3");
+  write(temporary.path() / "design.def", contents);
+  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "COMPONENTS count does not match records");
+
+  lefdef_fixture(temporary.path());
+  placement::LefDefParseOptions duplicate_library_options;
+  duplicate_library_options.lef_files = {temporary.path() / "tech.lef", temporary.path() / "tech.lef", temporary.path() / "cells.lef"};
+  auto duplicate_library_parser = placement::make_parser(std::move(duplicate_library_options));
+  expect_error([&] { (void)duplicate_library_parser->parse(temporary.path() / "design.def"); }, "duplicate site name 'core'");
+
+  auto parser = placement::make_parser(placement::LefDefParseOptions{});
+  expect_error([&] { (void)parser->parse(temporary.path() / "design.def"); }, "requires at least one --lef-file");
 }
 
 void malformed_parser_test() {
@@ -165,7 +308,9 @@ void placement_override_test() {
   // A malformed manifest placement proves that the override is selected as
   // the placement source instead of being layered on top of it.
   write(temporary.path() / "tiny.pl", "this file must not be parsed\n");
-  auto parser = placement::make_parser("bookshelf", {.placement_override = override});
+  placement::BookshelfParseOptions options;
+  options.placement_override = override;
+  auto parser = placement::make_parser(std::move(options));
   const auto board = parser->parse(temporary.path() / "tiny.aux");
   check(board.cells[0].location->x == 101 && board.cells[0].location->y == 202, "placement override coordinates");
   check(board.cells[0].location->orientation == placement::Orientation::S, "placement override orientation");
@@ -477,7 +622,9 @@ void svg_test() {
 int main() {
   const std::vector<std::pair<std::string_view, std::function<void()>>> tests{
       {"Bookshelf parser", parser_test},
+      {"LEF/DEF parser", lefdef_parser_test},
       {"parser diagnostics", malformed_parser_test},
+      {"LEF/DEF parser diagnostics", malformed_lefdef_parser_test},
       {"binary round trip and corruption", binary_test},
       {"placement override", placement_override_test},
       {"utilization grid", utilization_test},
