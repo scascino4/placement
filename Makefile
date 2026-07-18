@@ -33,29 +33,43 @@ PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
 TEST_BIN := $(BIN_DIR)/placement_tests
 
-OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
-OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(OUTPUT_AUX_FILES))))
-OUTPUT_TARGETS := $(addprefix output-,$(OUTPUT_DESIGNS))
-DREAMPLACE_PL_FILES := $(wildcard data/ispd2005-dreamplace/*.gp.pl)
-DREAMPLACE_DESIGNS := $(basename $(basename $(notdir $(DREAMPLACE_PL_FILES))))
-DREAMPLACE_OUTPUT_TARGETS := $(addprefix dreamplace-output-,$(DREAMPLACE_DESIGNS))
-FREE_OUTPUT_AUX_FILES := $(wildcard data/ispd2005free/*/*_allfree.aux)
-FREE_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir $(FREE_OUTPUT_AUX_FILES))))
-FREE_OUTPUT_TARGETS := $(addprefix free-output-,$(FREE_OUTPUT_DESIGNS))
-FREE_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005free-dreamplace/*_allfree.gp.pl)
-FREE_DREAMPLACE_DESIGNS := $(patsubst %_allfree.gp.pl,%,$(notdir $(FREE_DREAMPLACE_PL_FILES)))
-FREE_DREAMPLACE_OUTPUT_TARGETS := $(addprefix free-dreamplace-output-,$(FREE_DREAMPLACE_DESIGNS))
-ISPD2015_DESIGNS := mgc_des_perf_1 mgc_des_perf_a mgc_des_perf_b mgc_edit_dist_a \
-	mgc_fft_1 mgc_fft_2 mgc_fft_a mgc_fft_b \
-	mgc_matrix_mult_1 mgc_matrix_mult_2 mgc_matrix_mult_a mgc_matrix_mult_b \
-	mgc_matrix_mult_c mgc_pci_bridge32_a mgc_pci_bridge32_b \
-	mgc_superblue11_a mgc_superblue12 mgc_superblue14 mgc_superblue16_a \
-	mgc_superblue19
-ISPD2015_OUTPUT_TARGETS := $(addprefix ispd2015-output-,$(ISPD2015_DESIGNS))
+ISPD2005_OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
+ISPD2005_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir \
+	$(ISPD2005_OUTPUT_AUX_FILES))))
+ISPD2005_OUTPUT_TARGETS := $(addprefix ispd2005-output-, \
+	$(ISPD2005_OUTPUT_DESIGNS))
+ISPD2005_DREAMPLACE_PL_FILES := $(wildcard data/ispd2005-dreamplace/*.gp.pl)
+ISPD2005_DREAMPLACE_DESIGNS := $(basename $(basename $(notdir \
+	$(ISPD2005_DREAMPLACE_PL_FILES))))
+ISPD2005_DREAMPLACE_OUTPUT_TARGETS := $(addprefix ispd2005-dreamplace-output-, \
+	$(ISPD2005_DREAMPLACE_DESIGNS))
+ISPD2005FREE_OUTPUT_AUX_FILES := $(wildcard data/ispd2005free/*/*_allfree.aux)
+ISPD2005FREE_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir \
+	$(ISPD2005FREE_OUTPUT_AUX_FILES))))
+ISPD2005FREE_OUTPUT_TARGETS := $(addprefix ispd2005free-output-, \
+	$(ISPD2005FREE_OUTPUT_DESIGNS))
+ISPD2005FREE_DREAMPLACE_PL_FILES := $(wildcard \
+	data/ispd2005free-dreamplace/*_allfree.gp.pl)
+ISPD2005FREE_DREAMPLACE_DESIGNS := $(patsubst %_allfree.gp.pl,%,$(notdir \
+	$(ISPD2005FREE_DREAMPLACE_PL_FILES)))
+ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS := $(addprefix \
+	ispd2005free-dreamplace-output-,$(ISPD2005FREE_DREAMPLACE_DESIGNS))
+ISPD2015_OUTPUT_DEF_FILES := $(wildcard \
+	data/ispd2015/*/after_legalized.ntup.fix.def)
+ISPD2015_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir \
+	$(ISPD2015_OUTPUT_DEF_FILES))))
+ISPD2015_OUTPUT_TARGETS := $(addprefix ispd2015-output-, \
+	$(ISPD2015_OUTPUT_DESIGNS))
+ISPD2015_DREAMPLACE_DEF_FILES := $(wildcard data/ispd2015-dreamplace/*.gp.def)
+ISPD2015_DREAMPLACE_DESIGNS := $(patsubst %.gp.def,%,$(notdir \
+	$(ISPD2015_DREAMPLACE_DEF_FILES)))
+ISPD2015_DREAMPLACE_OUTPUT_TARGETS := $(addprefix ispd2015-dreamplace-output-, \
+	$(ISPD2015_DREAMPLACE_DESIGNS))
 
-.PHONY: all test valgrind check-data outputs $(OUTPUT_TARGETS) \
-	$(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
-	$(FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS) \
+.PHONY: all test valgrind check-data outputs $(ISPD2005_OUTPUT_TARGETS) \
+	$(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2005FREE_OUTPUT_TARGETS) \
+	$(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS) \
+	$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS) \
 	clean clean-outputs format
 
 all: $(PARSE_BIN) $(RENDER_BIN)
@@ -91,21 +105,31 @@ valgrind:
 
 check-data:
 	@missing=""; \
-	for design in adaptec1 adaptec2 adaptec3 adaptec4 \
-		bigblue1 bigblue2 bigblue3 bigblue4; do \
-		for path in \
-			"data/ispd2005/$$design/$$design.dp.aux" \
-			"data/ispd2005free/$$design/$${design}_allfree.aux"; do \
-			if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
-		done; \
-	done; \
+	if [ -z "$(ISPD2005_OUTPUT_DESIGNS)" ]; then \
+		missing="data/ispd2005/*/*.dp.aux"; \
+	fi; \
 	if [ -z "$$missing" ]; then \
-		for design in $(ISPD2015_DESIGNS); do \
+		for design in $(ISPD2005FREE_OUTPUT_DESIGNS); do \
+			for file in "$$design.aux" "$${design}_allfree.aux" \
+				"$${design}_allfree.pl"; do \
+				path="data/ispd2005free/$$design/$$file"; \
+				if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
+			done; \
+		done; \
+	fi; \
+	if [ -z "$$missing" ] && [ -z "$(ISPD2005FREE_OUTPUT_DESIGNS)" ]; then \
+		missing="data/ispd2005free/*/*_allfree.aux"; \
+	fi; \
+	if [ -z "$$missing" ]; then \
+		for design in $(ISPD2015_OUTPUT_DESIGNS); do \
 			for file in tech.lef cells.lef after_legalized.ntup.fix.def; do \
 				path="data/ispd2015/$$design/$$file"; \
 				if [ ! -f "$$path" ]; then missing="$$path"; break 2; fi; \
 			done; \
 		done; \
+	fi; \
+	if [ -z "$$missing" ] && [ -z "$(ISPD2015_OUTPUT_DESIGNS)" ]; then \
+		missing="data/ispd2015/*/after_legalized.ntup.fix.def"; \
 	fi; \
 	if [ -n "$$missing" ]; then \
 		echo "Benchmark data is missing or incomplete: $$missing" >&2; \
@@ -113,14 +137,17 @@ check-data:
 		exit 1; \
 	fi
 
-outputs: check-data all $(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) \
-	$(FREE_OUTPUT_TARGETS) $(FREE_DREAMPLACE_OUTPUT_TARGETS) \
-	$(ISPD2015_OUTPUT_TARGETS)
+outputs: check-data all $(ISPD2005_OUTPUT_TARGETS) \
+	$(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2005FREE_OUTPUT_TARGETS) \
+	$(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS) \
+	$(ISPD2015_OUTPUT_TARGETS) $(ISPD2015_DREAMPLACE_OUTPUT_TARGETS)
 
-$(OUTPUT_TARGETS) $(DREAMPLACE_OUTPUT_TARGETS) $(FREE_OUTPUT_TARGETS) \
-	$(FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS): | check-data
+$(ISPD2005_OUTPUT_TARGETS) $(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) \
+	$(ISPD2005FREE_OUTPUT_TARGETS) $(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS) \
+	$(ISPD2015_OUTPUT_TARGETS) \
+	$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS): | check-data
 
-$(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
+$(ISPD2005_OUTPUT_TARGETS): ispd2005-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
 	$(PARSE_BIN) "data/ispd2005/$*/$*.dp.aux" "out/ispd2005/$*/placement.placebin"
 	$(RENDER_BIN) "out/ispd2005/$*/placement.placebin" "out/ispd2005/$*/placement.svg"
@@ -131,7 +158,8 @@ $(OUTPUT_TARGETS): output-%: $(PARSE_BIN) $(RENDER_BIN)
 	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005/$*/placement.placebin" \
 		"out/ispd2005/$*/cell-density.svg"
 
-$(DREAMPLACE_OUTPUT_TARGETS): dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
+$(ISPD2005_DREAMPLACE_OUTPUT_TARGETS): ispd2005-dreamplace-output-%: \
+		$(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005-dreamplace/$*"
 	$(PARSE_BIN) --placement-file "data/ispd2005-dreamplace/$*.gp.pl" \
 		"data/ispd2005/$*/$*.dp.aux" "out/ispd2005-dreamplace/$*/placement.placebin"
@@ -144,7 +172,8 @@ $(DREAMPLACE_OUTPUT_TARGETS): dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
 		"out/ispd2005-dreamplace/$*/cell-density.svg"
 
-$(FREE_OUTPUT_TARGETS): free-output-%: $(PARSE_BIN) $(RENDER_BIN)
+$(ISPD2005FREE_OUTPUT_TARGETS): ispd2005free-output-%: \
+		$(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005free/$*"
 	$(PARSE_BIN) --placement-file "data/ispd2005free/$*/$*_allfree.pl" \
 		"data/ispd2005free/$*/$*.aux" \
@@ -158,7 +187,8 @@ $(FREE_OUTPUT_TARGETS): free-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005free/$*/placement.placebin" \
 		"out/ispd2005free/$*/cell-density.svg"
 
-$(FREE_DREAMPLACE_OUTPUT_TARGETS): free-dreamplace-output-%: $(PARSE_BIN) $(RENDER_BIN)
+$(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS): ispd2005free-dreamplace-output-%: \
+		$(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005free-dreamplace/$*"
 	$(PARSE_BIN) --placement-file "data/ispd2005free-dreamplace/$*_allfree.gp.pl" \
 		"data/ispd2005free/$*/$*.aux" \
@@ -193,6 +223,26 @@ $(ISPD2015_OUTPUT_TARGETS): ispd2015-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	$(RENDER_BIN) --output-format cell-density-svg \
 		"out/ispd2015/$*/placement.placebin" \
 		"out/ispd2015/$*/cell-density.svg"
+
+$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS): ispd2015-dreamplace-output-%: \
+		$(PARSE_BIN) $(RENDER_BIN)
+	@mkdir -p "out/ispd2015-dreamplace/$*"
+	$(PARSE_BIN) --input-format lefdef \
+		--lef-file "data/ispd2015/$*/tech.lef" \
+		--lef-file "data/ispd2015/$*/cells.lef" \
+		"data/ispd2015-dreamplace/$*.gp.def" \
+		"out/ispd2015-dreamplace/$*/placement.placebin"
+	$(RENDER_BIN) "out/ispd2015-dreamplace/$*/placement.placebin" \
+		"out/ispd2015-dreamplace/$*/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg \
+		"out/ispd2015-dreamplace/$*/placement.placebin" \
+		"out/ispd2015-dreamplace/$*/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg \
+		"out/ispd2015-dreamplace/$*/placement.placebin" \
+		"out/ispd2015-dreamplace/$*/pin-density.svg"
+	$(RENDER_BIN) --output-format cell-density-svg \
+		"out/ispd2015-dreamplace/$*/placement.placebin" \
+		"out/ispd2015-dreamplace/$*/cell-density.svg"
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \

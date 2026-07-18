@@ -134,15 +134,23 @@ make -j 8 outputs
 ```
 
 Results are grouped by benchmark family under `out/ispd2005`,
-`out/ispd2005free`, and `out/ispd2015`. If matching DREAMPlace `.gp.pl` files
-are available, `make outputs` also renders them under the corresponding
-`*-dreamplace` directory. To generate those placements while preparing the
-data, supply an explicit DREAMPlace launcher and configuration directory; see
-`./scripts/prepare_data.sh --help`.
+`out/ispd2005free`, and `out/ispd2015`. If matching DREAMPlace `.gp.pl` or
+`.gp.def` files are available, `make outputs` also renders them under the
+corresponding `*-dreamplace` directory. An individual ISPD 2015 DREAMPlace
+result can be regenerated with, for example,
+`make ispd2015-dreamplace-output-mgc_fft_1`.
+
+To generate the ISPD 2005 DREAMPlace placements while preparing the data,
+supply an explicit DREAMPlace launcher and configuration directory; see
+`./scripts/prepare_data.sh --help`. ISPD 2015 `.gp.def` placements are external
+inputs: the repository does not include the DREAMPlace configuration needed to
+recreate them, but the Makefile fully recreates their PLACEBIN and SVG outputs.
 
 The ISPD 2015 designs are installed under `data/ispd2015` in their original
 LEF, DEF, and Verilog form. `make outputs` parses their legalized DEF files and
-writes all four views under `out/ispd2015`.
+writes all four views under `out/ispd2015`. It discovers matching
+`data/ispd2015-dreamplace/<design>.gp.def` files and writes their four views
+under `out/ispd2015-dreamplace/<design>`.
 
 Useful maintenance targets are `make valgrind`, `make clean`, and
 `make clean-outputs`.
