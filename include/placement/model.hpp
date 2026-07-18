@@ -100,7 +100,7 @@ struct UtilizationGrid {
   // Row-major bins, starting at the placement region's lower-left corner.
   std::vector<UtilizationBin> bins;
 
-  [[nodiscard]] const UtilizationBin &at(std::uint64_t column, std::uint64_t row) const;
+  [[nodiscard]] const UtilizationBin &at(std::uint64_t col, std::uint64_t row) const;
 };
 
 struct PinDensityBin {
@@ -121,7 +121,7 @@ struct PinDensityGrid {
   // Row-major bins, starting at the placement region's lower-left corner.
   std::vector<PinDensityBin> bins;
 
-  [[nodiscard]] const PinDensityBin &at(std::uint64_t column, std::uint64_t row) const;
+  [[nodiscard]] const PinDensityBin &at(std::uint64_t col, std::uint64_t row) const;
 };
 
 struct CellDensityBin {
@@ -144,7 +144,7 @@ struct CellDensityGrid {
   // Row-major bins, starting at the placement region's lower-left corner.
   std::vector<CellDensityBin> bins;
 
-  [[nodiscard]] const CellDensityBin &at(std::uint64_t column, std::uint64_t row) const;
+  [[nodiscard]] const CellDensityBin &at(std::uint64_t col, std::uint64_t row) const;
 };
 
 struct Board {

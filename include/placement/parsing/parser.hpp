@@ -12,7 +12,7 @@ namespace placement {
 class Parser {
 public:
   virtual ~Parser() = default;
-  [[nodiscard]] virtual Board parse(const std::filesystem::path &input) const = 0;
+  [[nodiscard]] virtual Board parse(const std::filesystem::path &in) const = 0;
 };
 
 struct BookshelfParseOptions {
@@ -25,7 +25,7 @@ struct LefDefParseOptions {
 
 // The option type selects the backend and prevents backend-specific inputs from
 // being mixed in one loosely typed configuration object.
-[[nodiscard]] std::unique_ptr<Parser> make_parser(BookshelfParseOptions options = {});
-[[nodiscard]] std::unique_ptr<Parser> make_parser(LefDefParseOptions options);
+[[nodiscard]] std::unique_ptr<Parser> make_parser(BookshelfParseOptions opts = {});
+[[nodiscard]] std::unique_ptr<Parser> make_parser(LefDefParseOptions opts);
 
 } // namespace placement

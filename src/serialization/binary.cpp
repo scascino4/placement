@@ -26,14 +26,14 @@ constexpr std::size_t IO_BUFFER_SIZE = 256 * 1024;
 
 class BinarySerializer final : public Serializer {
 public:
-  void write(const Board &board, const std::filesystem::path &output) const override;
-  [[nodiscard]] Board read(const std::filesystem::path &input) const override;
+  void write(const Board &board, const std::filesystem::path &out) const override;
+  [[nodiscard]] Board read(const std::filesystem::path &in) const override;
 };
 
 [[nodiscard]] std::string lower(std::string_view value) {
-  std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-  return result;
+  std::string res(value);
+  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return res;
 }
 
 // These small wrappers keep byte order and bounds checks in one place. The
@@ -47,15 +47,15 @@ public:
   }
 
   void bytes(const void *data, std::size_t size) {
-    auto *source = static_cast<const char *>(data);
+    auto *src = static_cast<const char *>(data);
     while (size != 0) {
       if (used_ == buffer_.size())
         flush_buffer();
 
       const auto count = std::min(size, buffer_.size() - used_);
-      std::memcpy(buffer_.data() + used_, source, count);
+      std::memcpy(buffer_.data() + used_, src, count);
       used_ += count;
-      source += count;
+      src += count;
       size -= count;
     }
   }
@@ -121,26 +121,26 @@ public:
   }
 
   void bytes(void *data, std::size_t size) {
-    auto *destination = static_cast<char *>(data);
+    auto *dst = static_cast<char *>(data);
     while (size != 0) {
-      if (position_ == available_)
+      if (pos_ == avail_)
         refill(1);
 
-      const auto count = std::min(size, available_ - position_);
-      std::memcpy(destination, buffer_.data() + position_, count);
-      position_ += count;
-      destination += count;
+      const auto count = std::min(size, avail_ - pos_);
+      std::memcpy(dst, buffer_.data() + pos_, count);
+      pos_ += count;
+      dst += count;
       size -= count;
     }
   }
 
   template <std::unsigned_integral T> [[nodiscard]] T integer() {
-    if (available_ - position_ < sizeof(T))
+    if (avail_ - pos_ < sizeof(T))
       refill(sizeof(T));
 
     std::uint64_t value{};
     for (std::size_t i = 0; i < sizeof(T); ++i)
-      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buffer_[position_++])) << (i * 8);
+      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buffer_[pos_++])) << (i * 8);
     return static_cast<T>(value);
   }
 
@@ -184,7 +184,7 @@ public:
   }
 
   void require_end() {
-    if (position_ != available_)
+    if (pos_ != avail_)
       throw Error(path_.string() + ": trailing binary data");
 
     char byte{};
@@ -198,35 +198,35 @@ public:
 
 private:
   void refill(std::size_t required) {
-    const auto remaining = available_ - position_;
-    if (remaining != 0)
-      std::memmove(buffer_.data(), buffer_.data() + position_, remaining);
+    const auto left = avail_ - pos_;
+    if (left != 0)
+      std::memmove(buffer_.data(), buffer_.data() + pos_, left);
 
-    stream_.read(buffer_.data() + remaining, static_cast<std::streamsize>(buffer_.size() - remaining));
+    stream_.read(buffer_.data() + left, static_cast<std::streamsize>(buffer_.size() - left));
     const auto read = stream_.gcount();
-    position_ = 0;
-    available_ = remaining + static_cast<std::size_t>(read);
-    if (available_ < required)
+    pos_ = 0;
+    avail_ = left + static_cast<std::size_t>(read);
+    if (avail_ < required)
       throw Error(path_.string() + ": truncated binary placement");
   }
 
   std::filesystem::path path_;
   std::array<char, IO_BUFFER_SIZE> buffer_{};
-  std::size_t position_{};
-  std::size_t available_{};
+  std::size_t pos_{};
+  std::size_t avail_{};
   std::ifstream stream_;
 };
 
-void check_count(std::uint64_t count, const Input &input, std::string_view name) {
+void check_count(std::uint64_t count, const Input &in, std::string_view name) {
   if (count > MAX_RECORDS)
-    throw Error(input.path().string() + ": invalid " + std::string(name) + " count");
+    throw Error(in.path().string() + ": invalid " + std::string(name) + " count");
 }
 
 } // namespace
 
-void BinarySerializer::write(const Board &board, const std::filesystem::path &output) const {
-  detail::atomic_output(output, [&](const auto &temp) {
-    Output writer(temp);
+void BinarySerializer::write(const Board &board, const std::filesystem::path &out) const {
+  detail::atomic_output(out, [&](const auto &tmp) {
+    Output writer(tmp);
 
     writer.bytes(MAGIC.data(), MAGIC.size());
     writer.string(board.name);
@@ -247,9 +247,9 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
         writer.real(cell.location->y);
         writer.integer(static_cast<std::uint8_t>(cell.location->orientation));
         writer.integer(static_cast<std::uint8_t>(cell.location->status));
-        const bool has_dimensions = cell.location->width && cell.location->height;
-        writer.boolean(has_dimensions);
-        if (has_dimensions) {
+        const bool has_dims = cell.location->width && cell.location->height;
+        writer.boolean(has_dims);
+        if (has_dims) {
           writer.real(*cell.location->width);
           writer.real(*cell.location->height);
         }
@@ -289,12 +289,12 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
   });
 }
 
-Board BinarySerializer::read(const std::filesystem::path &input) const {
-  Input reader(input);
+Board BinarySerializer::read(const std::filesystem::path &in) const {
+  Input reader(in);
   std::array<char, MAGIC.size()> magic{};
   reader.bytes(magic.data(), magic.size());
   if (magic != MAGIC)
-    throw Error(input.string() + ": invalid binary magic");
+    throw Error(in.string() + ": invalid binary magic");
 
   Board board;
   board.name = reader.string();
@@ -323,18 +323,18 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     cell.macro = reader.boolean("macro flag");
 
     if (reader.boolean("placement presence flag")) {
-      Location location;
-      location.x = reader.real();
-      location.y = reader.real();
-      location.orientation = reader.enumeration<Orientation>(7, "orientation");
-      location.status = reader.enumeration<PlacementStatus>(2, "placement status");
+      Location loc;
+      loc.x = reader.real();
+      loc.y = reader.real();
+      loc.orientation = reader.enumeration<Orientation>(7, "orientation");
+      loc.status = reader.enumeration<PlacementStatus>(2, "placement status");
 
       if (reader.boolean("dimensions presence flag")) {
-        location.width = reader.real();
-        location.height = reader.real();
+        loc.width = reader.real();
+        loc.height = reader.real();
       }
 
-      cell.location = location;
+      cell.location = loc;
     }
 
     cell.weights = reader.weights();
@@ -351,7 +351,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
 
     row.symmetry = reader.integer<std::uint8_t>();
     if (row.symmetry > 7)
-      throw Error(input.string() + ": invalid row symmetry");
+      throw Error(in.string() + ": invalid row symmetry");
 
     const auto subrow_count = reader.integer<std::uint64_t>();
     check_count(subrow_count, reader, "subrow");
@@ -369,7 +369,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
     net.first_pin = reader.integer<std::uint64_t>();
     net.pin_count = reader.integer<std::uint64_t>();
     if (net.first_pin > pin_count || net.pin_count > pin_count - net.first_pin)
-      throw Error(input.string() + ": net pin range is out of bounds");
+      throw Error(in.string() + ": net pin range is out of bounds");
 
     net.weights = reader.weights();
     board.nets.push_back(std::move(net));
@@ -380,7 +380,7 @@ Board BinarySerializer::read(const std::filesystem::path &input) const {
 
     pin.cell = reader.integer<std::uint32_t>();
     if (pin.cell >= cell_count)
-      throw Error(input.string() + ": pin cell index is out of bounds");
+      throw Error(in.string() + ": pin cell index is out of bounds");
 
     pin.direction = reader.enumeration<PinDirection>(3, "pin direction");
     pin.offset_x = reader.real();

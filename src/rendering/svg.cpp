@@ -22,36 +22,36 @@ namespace placement {
 namespace {
 
 [[nodiscard]] std::string lower(std::string_view value) {
-  std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-  return result;
+  std::string res(value);
+  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return res;
 }
 
 [[nodiscard]] std::string escape(std::string_view value) {
-  std::string result;
-  result.reserve(value.size());
-  for (const auto character : value) {
-    switch (character) {
+  std::string res;
+  res.reserve(value.size());
+  for (const auto ch : value) {
+    switch (ch) {
     case '&':
-      result += "&amp;";
+      res += "&amp;";
       break;
     case '<':
-      result += "&lt;";
+      res += "&lt;";
       break;
     case '>':
-      result += "&gt;";
+      res += "&gt;";
       break;
     case '\"':
-      result += "&quot;";
+      res += "&quot;";
       break;
     case '\'':
-      result += "&apos;";
+      res += "&apos;";
       break;
     default:
-      result += character;
+      res += ch;
     }
   }
-  return result;
+  return res;
 }
 
 struct Bounds {
@@ -108,10 +108,10 @@ public:
 
   template <std::integral T> SvgOutput &operator<<(T value) {
     std::array<char, 32> encoded{};
-    const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value);
-    if (result.ec != std::errc{})
+    const auto res = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value);
+    if (res.ec != std::errc{})
       throw Error("failed while formatting SVG integer");
-    write(encoded.data(), static_cast<std::size_t>(result.ptr - encoded.data()));
+    write(encoded.data(), static_cast<std::size_t>(res.ptr - encoded.data()));
     return *this;
   }
 
@@ -125,10 +125,10 @@ public:
       return *this << static_cast<std::int64_t>(value);
 
     std::array<char, 32> encoded{};
-    const auto result = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value, std::chars_format::general, precision);
-    if (result.ec != std::errc{})
+    const auto res = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value, std::chars_format::general, precision);
+    if (res.ec != std::errc{})
       throw Error("failed while formatting SVG number");
-    write(encoded.data(), static_cast<std::size_t>(result.ptr - encoded.data()));
+    write(encoded.data(), static_cast<std::size_t>(res.ptr - encoded.data()));
     return *this;
   }
 
@@ -170,17 +170,17 @@ private:
 constexpr std::uint8_t UNPLACED_CELL = std::numeric_limits<std::uint8_t>::max();
 
 [[nodiscard]] std::vector<std::uint8_t> classify_cells(const Board &board, Bounds *bounds = nullptr) {
-  std::vector<std::uint8_t> classifications(board.cells.size(), UNPLACED_CELL);
-  for (std::size_t index = 0; index < board.cells.size(); ++index) {
-    const auto &cell = board.cells[index];
+  std::vector<std::uint8_t> classes(board.cells.size(), UNPLACED_CELL);
+  for (std::size_t idx = 0; idx < board.cells.size(); ++idx) {
+    const auto &cell = board.cells[idx];
     if (!cell.location)
       continue;
 
     if (bounds)
       bounds->include(placed_rectangle(cell));
-    classifications[index] = static_cast<std::uint8_t>(cell_class(cell));
+    classes[idx] = static_cast<std::uint8_t>(cell_class(cell));
   }
-  return classifications;
+  return classes;
 }
 
 template <CellClass Classification> struct CellPresentation;
@@ -202,7 +202,7 @@ template <> struct CellPresentation<CellClass::FixedNonInteracting> {
 };
 
 template <CellClass Classification, bool Overlay>
-void write_cell_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
+void write_cell_paths(SvgOutput &out, const Board &board, const std::vector<std::uint8_t> &classes) {
   // Combining rectangles into paths keeps SVG size and DOM overhead low. A
   // bounded batch size avoids producing path attributes that are unwieldy for
   // viewers to parse on multi-million-cell designs. The compact classification
@@ -211,119 +211,118 @@ void write_cell_paths(SvgOutput &output, const Board &board, const std::vector<s
   constexpr std::size_t CELLS_PER_PATH = 10'000;
   std::size_t in_path = 0;
 
-  for (std::size_t index = 0; index < board.cells.size(); ++index) {
-    if (classifications[index] != static_cast<std::uint8_t>(Classification))
+  for (std::size_t idx = 0; idx < board.cells.size(); ++idx) {
+    if (classes[idx] != static_cast<std::uint8_t>(Classification))
       continue;
 
-    const auto &cell = board.cells[index];
+    const auto &cell = board.cells[idx];
     const auto rect = placed_rectangle(cell);
     if (rect.width == 0 || rect.height == 0)
       continue;
 
     if (in_path == 0) {
-      output << "    <path class=\"" << CellPresentation<Classification>::css_class;
+      out << "    <path class=\"" << CellPresentation<Classification>::css_class;
       if constexpr (Overlay)
-        output << "-overlay";
-      output << "\" d=\"";
+        out << "-overlay";
+      out << "\" d=\"";
     }
 
-    output << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
+    out << 'M' << rect.x << ' ' << rect.y << 'h' << rect.width << 'v' << rect.height << 'h' << -rect.width << 'z';
 
     ++in_path;
     if (in_path == CELLS_PER_PATH) {
-      output << "\"/>\n";
+      out << "\"/>\n";
       in_path = 0;
     }
   }
 
   if (in_path != 0)
-    output << "\"/>\n";
+    out << "\"/>\n";
 }
 
-template <CellClass Classification> void write_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
-  write_cell_paths<Classification, false>(output, board, classifications);
+template <CellClass Classification> void write_paths(SvgOutput &out, const Board &board, const std::vector<std::uint8_t> &classes) {
+  write_cell_paths<Classification, false>(out, board, classes);
 }
 
-template <CellClass Classification>
-void write_overlay_paths(SvgOutput &output, const Board &board, const std::vector<std::uint8_t> &classifications) {
-  write_cell_paths<Classification, true>(output, board, classifications);
+template <CellClass Classification> void write_overlay_paths(SvgOutput &out, const Board &board, const std::vector<std::uint8_t> &classes) {
+  write_cell_paths<Classification, true>(out, board, classes);
 }
 
 template <typename Write> void write_atomic(const std::filesystem::path &path, Write write) {
-  detail::atomic_output(path, [&](const auto &temporary) {
-    SvgOutput output(temporary);
-    write(output);
-    output.finish();
+  detail::atomic_output(path, [&](const auto &tmp) {
+    SvgOutput out(tmp);
+    write(out);
+    out.finish();
   });
 }
 
 class SvgWriter final : public Renderer {
 public:
-  explicit SvgWriter(RenderOptions options) : options_(options) {}
+  explicit SvgWriter(RenderOptions opts) : opts_(opts) {}
 
-  void render(const Board &board, const std::filesystem::path &output_path) const override {
-    Bounds bounds;
+  void render(const Board &board, const std::filesystem::path &out_path) const override {
+    Bounds box;
     for (const auto &row : board.rows)
       for (const auto &subrow : row.subrows)
-        bounds.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-    const auto classifications = classify_cells(board, &bounds);
+        box.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+    const auto classes = classify_cells(board, &box);
 
-    if (bounds.empty())
+    if (box.empty())
       throw Error("cannot render a board without geometry");
 
-    const auto width = std::max(1.0, bounds.max_x - bounds.min_x);
-    const auto height = std::max(1.0, bounds.max_y - bounds.min_y);
+    const auto width = std::max(1.0, box.max_x - box.min_x);
+    const auto height = std::max(1.0, box.max_y - box.min_y);
     const auto span = std::max(width, height);
     const auto padding = span * 0.01;
     const auto stroke = span / 6000.0;
-    const auto &style = rendering_style::palette(options_.dark_mode);
+    const auto &style = rendering_style::palette(opts_.dark_mode);
 
-    write_atomic(output_path, [&](SvgOutput &output) {
-      output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-             << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
-             << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
-             << "  <title>" << escape(board.name) << " placement</title>\n"
-             << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, " << board.nets.size() << " nets</desc>\n";
+    write_atomic(out_path, [&](SvgOutput &out) {
+      out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+          << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -padding << ' ' << -padding << ' ' << width + 2 * padding << ' '
+          << height + 2 * padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+          << "  <title>" << escape(board.name) << " placement</title>\n"
+          << "  <desc>" << board.cells.size() << " cells, " << board.rows.size() << " rows, " << board.nets.size() << " nets</desc>\n";
 
-      output << "  <style>\n"
-             << "    .background{fill:" << style.background << "}.row{fill:" << style.row_fill << ";stroke:" << style.row_stroke
-             << ";stroke-width:" << stroke << "}.movable{fill:" << style.movable_fill << ";stroke:none}.macro{fill:" << style.macro_fill
-             << ";stroke:" << style.macro_stroke << ";stroke-width:" << stroke << "}.fixed{fill:" << style.fixed_fill
-             << ";stroke:" << style.fixed_stroke << ";stroke-width:" << stroke << "}.fixed-ni{fill:" << style.fixed_non_interacting_fill
-             << ";stroke:" << style.fixed_non_interacting_stroke << ";stroke-width:" << stroke << "}\n"
-             << "  </style>\n";
+      out << "  <style>\n"
+          << "    .background{fill:" << style.background << "}.row{fill:" << style.row_fill << ";stroke:" << style.row_stroke
+          << ";stroke-width:" << stroke << "}.movable{fill:" << style.movable_fill << ";stroke:none}.macro{fill:" << style.macro_fill
+          << ";stroke:" << style.macro_stroke << ";stroke-width:" << stroke << "}.fixed{fill:" << style.fixed_fill << ";stroke:" << style.fixed_stroke
+          << ";stroke-width:" << stroke << "}.fixed-ni{fill:" << style.fixed_non_interacting_fill << ";stroke:" << style.fixed_non_interacting_stroke
+          << ";stroke-width:" << stroke << "}\n"
+          << "  </style>\n";
 
-      output << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
-             << height + 2 * padding << "\"/>\n";
+      out << "  <rect class=\"background\" x=\"" << -padding << "\" y=\"" << -padding << "\" width=\"" << width + 2 * padding << "\" height=\""
+          << height + 2 * padding << "\"/>\n";
 
       // Placement coordinates use an upward-positive Y axis, while SVG uses
       // a downward-positive one. Translate to the computed bounds, then flip
       // the geometry group without also flipping title or descriptive text.
-      output << "  <g transform=\"translate(" << -bounds.min_x << ' ' << bounds.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+      out << "  <g transform=\"translate(" << -box.min_x << ' ' << box.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (const auto &row : board.rows)
         for (const auto &subrow : row.subrows)
-          output << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
-                 << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
+          out << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
+              << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
 
-      write_paths<CellClass::Movable>(output, board, classifications);
-      write_paths<CellClass::Macro>(output, board, classifications);
-      write_paths<CellClass::Fixed>(output, board, classifications);
-      write_paths<CellClass::FixedNonInteracting>(output, board, classifications);
+      write_paths<CellClass::Movable>(out, board, classes);
+      write_paths<CellClass::Macro>(out, board, classes);
+      write_paths<CellClass::Fixed>(out, board, classes);
+      write_paths<CellClass::FixedNonInteracting>(out, board, classes);
 
-      output << "  </g>\n</svg>\n";
+      out << "  </g>\n</svg>\n";
     });
   }
 
 private:
-  RenderOptions options_;
+  RenderOptions opts_;
 };
 
-void write_utilization_color(SvgOutput &output, double utilization, const rendering_style::Palette &style) {
-  const auto clamped = std::clamp(utilization, 0.0, 1.0);
+void write_utilization_color(SvgOutput &out, double util, const rendering_style::Palette &style) {
+  const auto clamped = std::clamp(util, 0.0, 1.0);
   const auto hue = 120.0 * (1.0 - clamped);
-  output << "hsl(";
-  output.number(hue, 5) << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
+  out << "hsl(";
+  out.number(hue, 5) << ' ' << style.heatmap_saturation_percent << "% " << style.heatmap_lightness_percent << "%)";
 }
 
 template <typename Grid> struct DensityPresentation;
@@ -350,7 +349,7 @@ template <typename Grid> struct DensityLayout {
   double stroke{};
 };
 
-template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &options) {
+template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &opts) {
   Bounds core;
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
@@ -366,199 +365,198 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
 
   const auto width = std::max(1.0, viewport.max_x - viewport.min_x);
   const auto height = std::max(1.0, viewport.max_y - viewport.min_y);
-  const auto viewport_span = std::max(width, height);
+  const auto view_span = std::max(width, height);
   const auto core_span = std::max(core.max_x - core.min_x, core.max_y - core.min_y);
 
-  return {core, viewport, width, height, options.bin_size.value_or(core_span / 100.0), viewport_span * 0.01, viewport_span / 8000.0};
+  return {core, viewport, width, height, opts.bin_size.value_or(core_span / 100.0), view_span * 0.01, view_span / 8000.0};
 }
 
-template <typename Grid, typename Function> void write_grid_bins(SvgOutput &output, const Grid &grid, Function write_bin) {
+template <typename Grid, typename Function> void write_grid_bins(SvgOutput &out, const Grid &grid, Function write_bin) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
     const auto height = std::min(grid.bin_size, grid.max_y - y);
-    for (std::uint64_t column = 0; column < grid.columns; ++column) {
-      const auto x = grid.min_x + static_cast<double>(column) * grid.bin_size;
+    for (std::uint64_t col = 0; col < grid.columns; ++col) {
+      const auto x = grid.min_x + static_cast<double>(col) * grid.bin_size;
       const auto width = std::min(grid.bin_size, grid.max_x - x);
-      write_bin(output, grid.at(column, row), x, y, width, height, column, row);
+      write_bin(out, grid.at(col, row), x, y, width, height, col, row);
     }
   }
 }
 
 template <typename Grid, typename Description, typename Bins>
-void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &options, const DensityLayout<Grid> &layout,
+void write_density_svg(const std::filesystem::path &path, const Board &board, const RenderOptions &opts, const DensityLayout<Grid> &layout,
                        Description description, Bins bins, bool movable_overlay) {
-  const auto classifications = classify_cells(board);
-  write_atomic(path, [&](SvgOutput &output) {
-    const auto &style = rendering_style::palette(options.dark_mode);
+  const auto classes = classify_cells(board);
+  write_atomic(path, [&](SvgOutput &out) {
+    const auto &style = rendering_style::palette(opts.dark_mode);
 
-    output << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-           << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -layout.padding << ' ' << -layout.padding << ' '
-           << layout.width + 2 * layout.padding << ' ' << layout.height + 2 * layout.padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
-           << "  <title>" << escape(board.name) << ' ' << DensityPresentation<Grid>::kind << "</title>\n"
-           << "  <desc>";
-    description(output);
-    output << "</desc>\n"
-           << "  <style>\n"
-           << "    .background{fill:" << style.background << "}.bin{stroke:" << style.grid_stroke
-           << ";stroke-opacity:.38;stroke-width:" << layout.stroke << '}';
+    out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"" << -layout.padding << ' ' << -layout.padding << ' '
+        << layout.width + 2 * layout.padding << ' ' << layout.height + 2 * layout.padding << "\" preserveAspectRatio=\"xMidYMid meet\">\n"
+        << "  <title>" << escape(board.name) << ' ' << DensityPresentation<Grid>::kind << "</title>\n"
+        << "  <desc>";
+    description(out);
+    out << "</desc>\n"
+        << "  <style>\n"
+        << "    .background{fill:" << style.background << "}.bin{stroke:" << style.grid_stroke << ";stroke-opacity:.38;stroke-width:" << layout.stroke
+        << '}';
     if (movable_overlay)
-      output << ".movable-overlay{fill:" << style.surface << ";fill-opacity:.42;stroke:none}";
-    output << ".macro-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke << "}"
-           << ".fixed-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke
-           << "}.fixed-ni-overlay{fill:" << style.surface << ";stroke:" << style.non_interacting_overlay_stroke << ";stroke-width:" << layout.stroke
-           << "}\n"
-           << "  </style>\n"
-           << "  <rect class=\"background\" x=\"" << -layout.padding << "\" y=\"" << -layout.padding << "\" width=\""
-           << layout.width + 2 * layout.padding << "\" height=\"" << layout.height + 2 * layout.padding << "\"/>\n"
-           << "  <g transform=\"translate(" << -layout.viewport.min_x << ' ' << layout.viewport.max_y
-           << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
+      out << ".movable-overlay{fill:" << style.surface << ";fill-opacity:.42;stroke:none}";
+    out << ".macro-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke << "}"
+        << ".fixed-overlay{fill:" << style.surface << ";stroke:" << style.overlay_stroke << ";stroke-width:" << layout.stroke
+        << "}.fixed-ni-overlay{fill:" << style.surface << ";stroke:" << style.non_interacting_overlay_stroke << ";stroke-width:" << layout.stroke
+        << "}\n"
+        << "  </style>\n"
+        << "  <rect class=\"background\" x=\"" << -layout.padding << "\" y=\"" << -layout.padding << "\" width=\""
+        << layout.width + 2 * layout.padding << "\" height=\"" << layout.height + 2 * layout.padding << "\"/>\n"
+        << "  <g transform=\"translate(" << -layout.viewport.min_x << ' ' << layout.viewport.max_y
+        << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
-    bins(output);
+    bins(out);
     if (movable_overlay)
-      write_overlay_paths<CellClass::Movable>(output, board, classifications);
-    write_overlay_paths<CellClass::Macro>(output, board, classifications);
-    write_overlay_paths<CellClass::Fixed>(output, board, classifications);
-    write_overlay_paths<CellClass::FixedNonInteracting>(output, board, classifications);
-    output << "  </g>\n</svg>\n";
+      write_overlay_paths<CellClass::Movable>(out, board, classes);
+    write_overlay_paths<CellClass::Macro>(out, board, classes);
+    write_overlay_paths<CellClass::Fixed>(out, board, classes);
+    write_overlay_paths<CellClass::FixedNonInteracting>(out, board, classes);
+    out << "  </g>\n</svg>\n";
   });
 }
 
 class UtilizationSvgWriter final : public Renderer {
 public:
-  explicit UtilizationSvgWriter(RenderOptions options) : options_(options) {}
+  explicit UtilizationSvgWriter(RenderOptions opts) : opts_(opts) {}
 
-  void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout<UtilizationGrid>(board, options_);
+  void render(const Board &board, const std::filesystem::path &out_path) const override {
+    const auto layout = density_layout<UtilizationGrid>(board, opts_);
     const auto grid = board.utilization(layout.bin_size);
-    const auto &style = rendering_style::palette(options_.dark_mode);
+    const auto &style = rendering_style::palette(opts_.dark_mode);
     write_density_svg(
-        output_path, board, options_, layout,
-        [&](SvgOutput &output) {
-          output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
-                 << "; green is low utilization, red is 100 percent or greater, gray is not placeable";
+        out_path, board, opts_, layout,
+        [&](SvgOutput &out) {
+          out << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
+              << "; green is low utilization, red is 100 percent or greater, gray is not placeable";
         },
-        [&](SvgOutput &output) {
+        [&](SvgOutput &out) {
           write_grid_bins(
-              output, grid,
-              [&](SvgOutput &stream, const UtilizationBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
-                const auto utilization = bin.utilization();
-                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
-                if (utilization)
-                  write_utilization_color(stream, *utilization, style);
+              out, grid,
+              [&](SvgOutput &out, const UtilizationBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
+                const auto util = bin.utilization();
+                out << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
+                if (util)
+                  write_utilization_color(out, *util, style);
                 else
-                  stream << style.unavailable;
-                stream << "\"/>\n";
+                  out << style.unavailable;
+                out << "\"/>\n";
               });
         },
         true);
   }
 
 private:
-  RenderOptions options_;
+  RenderOptions opts_;
 };
 
 class PinDensitySvgWriter final : public Renderer {
 public:
-  explicit PinDensitySvgWriter(RenderOptions options) : options_(options) {}
+  explicit PinDensitySvgWriter(RenderOptions opts) : opts_(opts) {}
 
-  void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout<PinDensityGrid>(board, options_);
+  void render(const Board &board, const std::filesystem::path &out_path) const override {
+    const auto layout = density_layout<PinDensityGrid>(board, opts_);
     const auto grid = board.pin_density(layout.bin_size);
-    const auto utilization_grid = board.utilization(layout.bin_size);
+    const auto util_grid = board.utilization(layout.bin_size);
 
-    std::vector<double> nonzero_densities;
-    nonzero_densities.reserve(grid.bins.size());
+    std::vector<double> densities;
+    densities.reserve(grid.bins.size());
     for (const auto &bin : grid.bins)
       if (bin.pin_count != 0)
-        nonzero_densities.push_back(bin.density());
+        densities.push_back(bin.density());
 
-    std::sort(nonzero_densities.begin(), nonzero_densities.end());
+    std::sort(densities.begin(), densities.end());
 
-    double color_ceiling = 1.0;
-    if (!nonzero_densities.empty()) {
-      const auto percentile_index = static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(nonzero_densities.size()))) - 1;
-      color_ceiling = nonzero_densities[percentile_index];
+    double ceiling = 1.0;
+    if (!densities.empty()) {
+      const auto idx = static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(densities.size()))) - 1;
+      ceiling = densities[idx];
     }
 
-    const auto &style = rendering_style::palette(options_.dark_mode);
+    const auto &style = rendering_style::palette(opts_.dark_mode);
     write_density_svg(
-        output_path, board, options_, layout,
-        [&](SvgOutput &output) {
-          output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, "
-                 << color_ceiling << " pins per square placement unit";
+        out_path, board, opts_, layout,
+        [&](SvgOutput &out) {
+          out << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size << "; color saturates at the 95th percentile, " << ceiling
+              << " pins per square placement unit";
         },
-        [&](SvgOutput &output) {
-          write_grid_bins(output, grid,
-                          [&](SvgOutput &stream, const PinDensityBin &bin, double x, double y, double width, double height, std::uint64_t column,
-                              std::uint64_t row) {
-                            const auto placeable = utilization_grid.at(column, row).utilization().has_value();
-                            stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height
-                                   << "\" fill=\"";
-                            if (placeable)
-                              write_utilization_color(stream, bin.density() / color_ceiling, style);
-                            else
-                              stream << style.unavailable;
-                            stream << "\"><title>" << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
-                          });
+        [&](SvgOutput &out) {
+          write_grid_bins(
+              out, grid,
+              [&](SvgOutput &out, const PinDensityBin &bin, double x, double y, double width, double height, std::uint64_t col, std::uint64_t row) {
+                const auto placeable = util_grid.at(col, row).utilization().has_value();
+                out << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
+                if (placeable)
+                  write_utilization_color(out, bin.density() / ceiling, style);
+                else
+                  out << style.unavailable;
+                out << "\"><title>" << bin.pin_count << " pins; density " << bin.density() << "</title></rect>\n";
+              });
         },
         true);
   }
 
 private:
-  RenderOptions options_;
+  RenderOptions opts_;
 };
 
 class CellDensitySvgWriter final : public Renderer {
 public:
-  explicit CellDensitySvgWriter(RenderOptions options) : options_(options) {}
+  explicit CellDensitySvgWriter(RenderOptions opts) : opts_(opts) {}
 
-  void render(const Board &board, const std::filesystem::path &output_path) const override {
-    const auto layout = density_layout<CellDensityGrid>(board, options_);
+  void render(const Board &board, const std::filesystem::path &out_path) const override {
+    const auto layout = density_layout<CellDensityGrid>(board, opts_);
     const auto grid = board.cell_density(layout.bin_size);
-    const auto &style = rendering_style::palette(options_.dark_mode);
+    const auto &style = rendering_style::palette(opts_.dark_mode);
     write_density_svg(
-        output_path, board, options_, layout,
-        [&](SvgOutput &output) {
-          output << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
-                 << "; density is movable-object overlap divided by capacity after fixed physical objects are removed";
+        out_path, board, opts_, layout,
+        [&](SvgOutput &out) {
+          out << grid.columns << " by " << grid.rows << " bins of size " << grid.bin_size
+              << "; density is movable-object overlap divided by capacity after fixed physical objects are removed";
         },
-        [&](SvgOutput &output) {
+        [&](SvgOutput &out) {
           write_grid_bins(
-              output, grid,
-              [&](SvgOutput &stream, const CellDensityBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
-                const auto density = bin.density();
-                stream << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
-                if (density)
-                  write_utilization_color(stream, *density, style);
+              out, grid,
+              [&](SvgOutput &out, const CellDensityBin &bin, double x, double y, double width, double height, std::uint64_t, std::uint64_t) {
+                const auto dens = bin.density();
+                out << "    <rect class=\"bin\" x=\"" << x << "\" y=\"" << y << "\" width=\"" << width << "\" height=\"" << height << "\" fill=\"";
+                if (dens)
+                  write_utilization_color(out, *dens, style);
                 else
-                  stream << style.unavailable;
-                stream << "\"><title>" << bin.movable_area << " movable-object area; " << bin.available_area << " available area; density ";
-                if (density)
-                  stream << *density;
+                  out << style.unavailable;
+                out << "\"><title>" << bin.movable_area << " movable-object area; " << bin.available_area << " available area; density ";
+                if (dens)
+                  out << *dens;
                 else
-                  stream << "unavailable";
-                stream << "</title></rect>\n";
+                  out << "unavailable";
+                out << "</title></rect>\n";
               });
         },
         false);
   }
 
 private:
-  RenderOptions options_;
+  RenderOptions opts_;
 };
 
 } // namespace
 
-std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options) {
-  const auto normalized = lower(format);
-  if (normalized == "svg")
-    return std::make_unique<SvgWriter>(options);
-  if (normalized == "utilization-svg")
-    return std::make_unique<UtilizationSvgWriter>(options);
-  if (normalized == "pin-density-svg")
-    return std::make_unique<PinDensitySvgWriter>(options);
-  if (normalized == "cell-density-svg")
-    return std::make_unique<CellDensitySvgWriter>(options);
+std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions opts) {
+  const auto norm = lower(format);
+  if (norm == "svg")
+    return std::make_unique<SvgWriter>(opts);
+  if (norm == "utilization-svg")
+    return std::make_unique<UtilizationSvgWriter>(opts);
+  if (norm == "pin-density-svg")
+    return std::make_unique<PinDensitySvgWriter>(opts);
+  if (norm == "cell-density-svg")
+    return std::make_unique<CellDensitySvgWriter>(opts);
   throw Error("unsupported output format '" + std::string(format) + "'");
 }
 

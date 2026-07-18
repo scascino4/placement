@@ -35,10 +35,10 @@ void write(const std::filesystem::path &path, std::string_view contents);
 [[nodiscard]] std::string read(const std::filesystem::path &path);
 [[nodiscard]] bool contains_parts(std::string_view contents, std::initializer_list<std::string_view> parts);
 [[nodiscard]] std::string_view attribute_value(std::string_view contents, std::string_view name);
-void bookshelf_fixture(const std::filesystem::path &directory);
-void lefdef_fixture(const std::filesystem::path &directory);
-[[nodiscard]] Board parse_bookshelf_fixture(const std::filesystem::path &directory);
-[[nodiscard]] Board parse_lefdef_fixture(const std::filesystem::path &directory);
+void bookshelf_fixture(const std::filesystem::path &dir);
+void lefdef_fixture(const std::filesystem::path &dir);
+[[nodiscard]] Board parse_bookshelf_fixture(const std::filesystem::path &dir);
+[[nodiscard]] Board parse_lefdef_fixture(const std::filesystem::path &dir);
 
 inline void check(bool condition, std::string_view message) {
   if (!condition)

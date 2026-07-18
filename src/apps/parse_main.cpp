@@ -17,19 +17,19 @@ namespace {
 
 enum class InputFormat { Bookshelf, LefDef };
 
-void usage(std::ostream &output) {
-  output << "Usage: placement_parse [--input-format bookshelf|lefdef] [--lef-file path]... [--placement-file path] "
-            "[--serialization-format binary] <input> <output>\n";
+void usage(std::ostream &out) {
+  out << "Usage: placement_parse [--input-format bookshelf|lefdef] [--lef-file path]... [--placement-file path] "
+         "[--serialization-format binary] <input> <output>\n";
 }
 
 [[nodiscard]] InputFormat parse_input_format(std::string_view value) {
-  std::string normalized(value);
-  for (auto &character : normalized)
-    character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+  std::string norm(value);
+  for (auto &ch : norm)
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 
-  if (normalized == "bookshelf")
+  if (norm == "bookshelf")
     return InputFormat::Bookshelf;
-  if (normalized == "lefdef" || normalized == "lef/def")
+  if (norm == "lefdef" || norm == "lef/def")
     return InputFormat::LefDef;
   throw placement::Error("unsupported input format '" + std::string(value) + "'");
 }
@@ -38,31 +38,31 @@ void usage(std::ostream &output) {
 
 int main(int argc, char **argv) {
   try {
-    std::string input_format = "bookshelf";
-    std::string serialization_format = "binary";
-    std::optional<std::filesystem::path> placement_override;
-    std::vector<std::filesystem::path> lef_files;
+    std::string in_fmt = "bookshelf";
+    std::string ser_fmt = "binary";
+    std::optional<std::filesystem::path> pl_override;
+    std::vector<std::filesystem::path> lefs;
     int arg = 1;
 
     while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
-      const std::string_view option(argv[arg++]);
-      if (option == "--help") {
+      const std::string_view opt(argv[arg++]);
+      if (opt == "--help") {
         usage(std::cout);
         return 0;
       }
       if (arg >= argc)
-        throw placement::Error(std::string(option) + " requires a value");
+        throw placement::Error(std::string(opt) + " requires a value");
 
-      if (option == "--input-format")
-        input_format = argv[arg++];
-      else if (option == "--lef-file")
-        lef_files.emplace_back(argv[arg++]);
-      else if (option == "--placement-file")
-        placement_override = argv[arg++];
-      else if (option == "--serialization-format")
-        serialization_format = argv[arg++];
+      if (opt == "--input-format")
+        in_fmt = argv[arg++];
+      else if (opt == "--lef-file")
+        lefs.emplace_back(argv[arg++]);
+      else if (opt == "--placement-file")
+        pl_override = argv[arg++];
+      else if (opt == "--serialization-format")
+        ser_fmt = argv[arg++];
       else
-        throw placement::Error("unknown option '" + std::string(option) + "'");
+        throw placement::Error("unknown option '" + std::string(opt) + "'");
     }
 
     if (argc - arg != 2) {
@@ -70,30 +70,30 @@ int main(int argc, char **argv) {
       return 2;
     }
 
-    const std::filesystem::path input(argv[arg]);
-    const std::filesystem::path output(argv[arg + 1]);
+    const std::filesystem::path in(argv[arg]);
+    const std::filesystem::path out(argv[arg + 1]);
 
     std::unique_ptr<placement::Parser> parser;
-    switch (parse_input_format(input_format)) {
+    switch (parse_input_format(in_fmt)) {
     case InputFormat::Bookshelf:
-      if (!lef_files.empty())
+      if (!lefs.empty())
         throw placement::Error("--lef-file is only valid with --input-format lefdef");
-      parser = placement::make_parser(placement::BookshelfParseOptions{.placement_override = placement_override});
+      parser = placement::make_parser(placement::BookshelfParseOptions{.placement_override = pl_override});
       break;
 
     case InputFormat::LefDef:
-      if (placement_override)
+      if (pl_override)
         throw placement::Error("--placement-file is only valid with --input-format bookshelf");
-      parser = placement::make_parser(placement::LefDefParseOptions{.lef_files = std::move(lef_files)});
+      parser = placement::make_parser(placement::LefDefParseOptions{.lef_files = std::move(lefs)});
       break;
     }
 
-    auto serializer = placement::make_serializer(serialization_format);
-    auto board = parser->parse(input);
-    serializer->write(board, output);
+    auto serializer = placement::make_serializer(ser_fmt);
+    auto board = parser->parse(in);
+    serializer->write(board, out);
 
     std::cout << board.name << ": " << board.cells.size() << " cells, " << board.nets.size() << " nets, " << board.pins.size() << " pins, "
-              << board.rows.size() << " rows -> " << output << '\n';
+              << board.rows.size() << " rows -> " << out << '\n';
 
     return 0;
   } catch (const std::exception &error) {

@@ -30,8 +30,8 @@ using parsing_detail::validate_unique_names;
 
 class Tokens {
 public:
-  explicit Tokens(const std::filesystem::path &path) : path_(path), input_(path, std::ios::binary) {
-    if (!input_)
+  explicit Tokens(const std::filesystem::path &path) : path_(path), in_(path, std::ios::binary) {
+    if (!in_)
       throw Error("cannot open " + path.string());
   }
 
@@ -42,23 +42,23 @@ public:
     while (true) {
       if (!ensure_available())
         return false;
-      const auto character = static_cast<unsigned char>(buffer_[position_]);
-      if (kind(character) == Comment) {
+      const auto ch = static_cast<unsigned char>(buf_[pos_]);
+      if (kind(ch) == Comment) {
         while (true) {
-          while (position_ != available_ && buffer_[position_] != '\n')
-            ++position_;
-          if (position_ != available_)
+          while (pos_ != avail_ && buf_[pos_] != '\n')
+            ++pos_;
+          if (pos_ != avail_)
             break;
           if (!refill())
             return false;
         }
-        ++position_;
+        ++pos_;
         ++line_;
         continue;
       }
-      if (kind(character) == Space) {
-        ++position_;
-        if (character == '\n')
+      if (kind(ch) == Space) {
+        ++pos_;
+        if (ch == '\n')
           ++line_;
         continue;
       }
@@ -66,50 +66,50 @@ public:
     }
 
     token_line_ = line_;
-    auto character = static_cast<unsigned char>(buffer_[position_]);
-    if (kind(character) == Punctuation) {
-      token_ = std::string_view(buffer_.data() + position_, 1);
-      ++position_;
+    auto ch = static_cast<unsigned char>(buf_[pos_]);
+    if (kind(ch) == Punctuation) {
+      token_ = std::string_view(buf_.data() + pos_, 1);
+      ++pos_;
       return true;
     }
 
-    if (character == '"') {
-      ++position_;
+    if (ch == '"') {
+      ++pos_;
       bool escaped = false;
       while (true) {
         if (!ensure_available())
           fail("unterminated quoted string");
-        character = static_cast<unsigned char>(buffer_[position_++]);
-        if (character == '\n')
+        ch = static_cast<unsigned char>(buf_[pos_++]);
+        if (ch == '\n')
           ++line_;
-        if (character == '"' && !escaped) {
+        if (ch == '"' && !escaped) {
           token_ = spill_;
           return true;
         }
-        spill_.push_back(static_cast<char>(character));
-        escaped = character == '\\' && !escaped;
-        if (character != '\\')
+        spill_.push_back(static_cast<char>(ch));
+        escaped = ch == '\\' && !escaped;
+        if (ch != '\\')
           escaped = false;
       }
     }
 
     while (true) {
-      const auto begin = position_;
-      while (position_ != available_) {
-        character = static_cast<unsigned char>(buffer_[position_]);
-        if (kind(character) != Regular) {
+      const auto begin = pos_;
+      while (pos_ != avail_) {
+        ch = static_cast<unsigned char>(buf_[pos_]);
+        if (kind(ch) != Regular) {
           if (spill_.empty())
-            token_ = std::string_view(buffer_.data() + begin, position_ - begin);
+            token_ = std::string_view(buf_.data() + begin, pos_ - begin);
           else {
-            spill_.append(buffer_.data() + begin, position_ - begin);
+            spill_.append(buf_.data() + begin, pos_ - begin);
             token_ = spill_;
           }
           return true;
         }
-        ++position_;
+        ++pos_;
       }
 
-      spill_.append(buffer_.data() + begin, position_ - begin);
+      spill_.append(buf_.data() + begin, pos_ - begin);
       if (!refill()) {
         token_ = spill_;
         return true;
@@ -138,37 +138,37 @@ private:
   enum CharacterKind : std::uint8_t { Regular, Space, Punctuation, Comment };
 
   static constexpr auto CHARACTER_KINDS = [] {
-    std::array<CharacterKind, 256> result{};
-    result[static_cast<unsigned char>(' ')] = Space;
-    result[static_cast<unsigned char>('\t')] = Space;
-    result[static_cast<unsigned char>('\r')] = Space;
-    result[static_cast<unsigned char>('\n')] = Space;
-    result[static_cast<unsigned char>('\f')] = Space;
-    result[static_cast<unsigned char>('(')] = Punctuation;
-    result[static_cast<unsigned char>(')')] = Punctuation;
-    result[static_cast<unsigned char>(';')] = Punctuation;
-    result[static_cast<unsigned char>('#')] = Comment;
-    return result;
+    std::array<CharacterKind, 256> res{};
+    res[static_cast<unsigned char>(' ')] = Space;
+    res[static_cast<unsigned char>('\t')] = Space;
+    res[static_cast<unsigned char>('\r')] = Space;
+    res[static_cast<unsigned char>('\n')] = Space;
+    res[static_cast<unsigned char>('\f')] = Space;
+    res[static_cast<unsigned char>('(')] = Punctuation;
+    res[static_cast<unsigned char>(')')] = Punctuation;
+    res[static_cast<unsigned char>(';')] = Punctuation;
+    res[static_cast<unsigned char>('#')] = Comment;
+    return res;
   }();
 
-  [[nodiscard]] static CharacterKind kind(unsigned char character) { return CHARACTER_KINDS[character]; }
+  [[nodiscard]] static CharacterKind kind(unsigned char ch) { return CHARACTER_KINDS[ch]; }
 
-  bool ensure_available() { return position_ != available_ || refill(); }
+  bool ensure_available() { return pos_ != avail_ || refill(); }
 
   bool refill() {
-    input_.read(buffer_.data(), static_cast<std::streamsize>(buffer_.size()));
-    available_ = static_cast<std::size_t>(input_.gcount());
-    position_ = 0;
-    if (available_ == 0 && !input_.eof())
+    in_.read(buf_.data(), static_cast<std::streamsize>(buf_.size()));
+    avail_ = static_cast<std::size_t>(in_.gcount());
+    pos_ = 0;
+    if (avail_ == 0 && !in_.eof())
       throw Error("failed while reading " + path_.string());
-    return available_ != 0;
+    return avail_ != 0;
   }
 
   std::filesystem::path path_;
-  std::ifstream input_;
-  std::array<char, 256 * 1024> buffer_{};
-  std::size_t position_{};
-  std::size_t available_{};
+  std::ifstream in_;
+  std::array<char, 256 * 1024> buf_{};
+  std::size_t pos_{};
+  std::size_t avail_{};
   std::uint64_t line_{1};
   std::uint64_t token_line_{1};
   std::string_view token_;
@@ -311,9 +311,9 @@ struct MacroDefinition {
     const auto empty = std::numeric_limits<std::uint32_t>::max();
     auto slot = std::hash<std::string_view>{}(pin_name) & (pin_slots.size() - 1);
     while (pin_slots[slot] != empty) {
-      const auto index = pin_slots[slot];
-      if (pins[index].name == pin_name)
-        return &pins[index];
+      const auto idx = pin_slots[slot];
+      if (pins[idx].name == pin_name)
+        return &pins[idx];
       slot = (slot + 1) & (pin_slots.size() - 1);
     }
     return nullptr;
@@ -330,19 +330,19 @@ template <> struct DefinitionTraits<MacroDefinition> {
   static constexpr std::string_view kind = "macro";
 };
 
-template <typename Definition> void finalize_definitions(std::vector<Definition> &definitions) {
-  std::sort(definitions.begin(), definitions.end(), [](const Definition &lhs, const Definition &rhs) { return lhs.name < rhs.name; });
-  for (std::size_t i = 1; i < definitions.size(); ++i)
-    if (definitions[i - 1].name == definitions[i].name)
-      throw Error("LEF inputs contain duplicate " + std::string(DefinitionTraits<Definition>::kind) + " name '" + definitions[i].name + "'");
+template <typename Definition> void finalize_definitions(std::vector<Definition> &defs) {
+  std::sort(defs.begin(), defs.end(), [](const Definition &lhs, const Definition &rhs) { return lhs.name < rhs.name; });
+  for (std::size_t i = 1; i < defs.size(); ++i)
+    if (defs[i - 1].name == defs[i].name)
+      throw Error("LEF inputs contain duplicate " + std::string(DefinitionTraits<Definition>::kind) + " name '" + defs[i].name + "'");
 }
 
-template <typename Definition> [[nodiscard]] std::vector<std::uint32_t> make_definition_index(const std::vector<Definition> &definitions) {
+template <typename Definition> [[nodiscard]] std::vector<std::uint32_t> make_definition_index(const std::vector<Definition> &defs) {
   constexpr auto empty = std::numeric_limits<std::uint32_t>::max();
-  const auto required = definitions.size() + definitions.size() / 2 + 1;
+  const auto required = defs.size() + defs.size() / 2 + 1;
   std::vector<std::uint32_t> slots(std::bit_ceil(required), empty);
-  for (std::uint32_t i = 0; i < definitions.size(); ++i) {
-    auto slot = std::hash<std::string_view>{}(definitions[i].name) & (slots.size() - 1);
+  for (std::uint32_t i = 0; i < defs.size(); ++i) {
+    auto slot = std::hash<std::string_view>{}(defs[i].name) & (slots.size() - 1);
     while (slots[slot] != empty)
       slot = (slot + 1) & (slots.size() - 1);
     slots[slot] = i;
@@ -351,14 +351,14 @@ template <typename Definition> [[nodiscard]] std::vector<std::uint32_t> make_def
 }
 
 template <typename Definition>
-[[nodiscard]] std::optional<std::uint32_t> find_definition(const std::vector<Definition> &definitions, const std::vector<std::uint32_t> &slots,
+[[nodiscard]] std::optional<std::uint32_t> find_definition(const std::vector<Definition> &defs, const std::vector<std::uint32_t> &slots,
                                                            std::string_view name) {
   constexpr auto empty = std::numeric_limits<std::uint32_t>::max();
   auto slot = std::hash<std::string_view>{}(name) & (slots.size() - 1);
   while (slots[slot] != empty) {
-    const auto index = slots[slot];
-    if (definitions[index].name == name)
-      return index;
+    const auto idx = slots[slot];
+    if (defs[idx].name == name)
+      return idx;
     slot = (slot + 1) & (slots.size() - 1);
   }
   return std::nullopt;
@@ -388,8 +388,8 @@ public:
   [[nodiscard]] std::optional<std::uint32_t> find_site(std::string_view name) const { return find_definition(sites_, site_slots_, name); }
   [[nodiscard]] std::optional<std::uint32_t> find_macro(std::string_view name) const { return find_definition(macros_, macro_slots_, name); }
   [[nodiscard]] std::size_t macro_count() const { return macros_.size(); }
-  [[nodiscard]] const SiteDefinition &site(std::uint32_t index) const { return sites_[index]; }
-  [[nodiscard]] const MacroDefinition &macro(std::uint32_t index) const { return macros_[index]; }
+  [[nodiscard]] const SiteDefinition &site(std::uint32_t idx) const { return sites_[idx]; }
+  [[nodiscard]] const MacroDefinition &macro(std::uint32_t idx) const { return macros_[idx]; }
 
 private:
   std::vector<SiteDefinition> sites_;
@@ -621,12 +621,12 @@ public:
       wide_indices_.push_back(WIDE_TOP_PIN);
   }
 
-  [[nodiscard]] std::optional<std::uint32_t> operator[](std::size_t index) const {
+  [[nodiscard]] std::optional<std::uint32_t> operator[](std::size_t idx) const {
     if (narrow_) {
-      const auto value = narrow_indices_[index];
+      const auto value = narrow_indices_[idx];
       return value == NARROW_TOP_PIN ? std::nullopt : std::optional<std::uint32_t>(value);
     }
-    const auto value = wide_indices_[index];
+    const auto value = wide_indices_[idx];
     return value == WIDE_TOP_PIN ? std::nullopt : std::optional<std::uint32_t>(value);
   }
 
@@ -642,7 +642,7 @@ private:
 class DefParser {
 public:
   DefParser(const std::filesystem::path &path, const Library &library)
-      : path_(path), tokens_(path), library_(library), masters_by_cell_(library.macro_count()) {}
+      : path_(path), tokens_(path), library_(library), masters_(library.macro_count()) {}
 
   [[nodiscard]] Board parse() {
     while (tokens_.next()) {
@@ -687,7 +687,7 @@ public:
       tokens_.fail("missing DESIGN statement");
     if (!units_seen_)
       tokens_.fail("missing DEF distance units");
-    if (!components_seen_ || !pins_seen_ || !nets_seen_)
+    if (!comps_seen_ || !pins_seen_ || !nets_seen_)
       tokens_.fail("DEF requires COMPONENTS, PINS, and NETS sections");
     if (board_.rows.empty())
       tokens_.fail("DEF contains no placement rows");
@@ -703,7 +703,7 @@ private:
   [[nodiscard]] double scale(double value) const {
     if (!units_seen_)
       tokens_.fail("UNITS must precede geometric records");
-    return value / static_cast<double>(database_units_);
+    return value / static_cast<double>(db_units_);
   }
 
   [[nodiscard]] double next_scaled(std::string_view description) { return scale(next_number<double>(tokens_, description)); }
@@ -713,8 +713,8 @@ private:
       tokens_.fail("duplicate UNITS statement");
     tokens_.expect("DISTANCE");
     tokens_.expect("MICRONS");
-    database_units_ = next_number<std::uint64_t>(tokens_, "DEF database units");
-    if (database_units_ == 0)
+    db_units_ = next_number<std::uint64_t>(tokens_, "DEF database units");
+    if (db_units_ == 0)
       tokens_.fail("DEF database units must be positive");
     tokens_.expect(";");
     units_seen_ = true;
@@ -732,7 +732,7 @@ private:
     const auto x = next_scaled("row X coordinate");
     const auto y = next_scaled("row Y coordinate");
     tokens_.require("row orientation");
-    const auto row_orientation = orientation(tokens_.token(), tokens_);
+    const auto row_orient = orientation(tokens_.token(), tokens_);
     tokens_.expect("DO");
     const auto x_count = next_number<std::uint64_t>(tokens_, "row X site count");
     tokens_.expect("BY");
@@ -746,16 +746,16 @@ private:
     if (y_count > std::numeric_limits<std::size_t>::max() - board_.rows.size())
       tokens_.fail("row count exceeds placement model limit");
 
-    const auto &definition = library_.site(*site);
+    const auto &def = library_.site(*site);
     board_.rows.reserve(board_.rows.size() + static_cast<std::size_t>(y_count));
     for (std::uint64_t i = 0; i < y_count; ++i) {
       Row row;
       row.coordinate = y + static_cast<double>(i) * y_step;
-      row.height = definition.height;
-      row.site_width = definition.width;
+      row.height = def.height;
+      row.site_width = def.width;
       row.site_spacing = x_step;
-      row.site_orientation = row_orientation;
-      row.symmetry = definition.symmetry;
+      row.site_orientation = row_orient;
+      row.symmetry = def.symmetry;
       row.subrows.push_back({x, x_count});
       board_.rows.push_back(std::move(row));
     }
@@ -763,25 +763,25 @@ private:
 
   [[nodiscard]] Location parse_component_location(PlacementStatus status) {
     tokens_.expect("(");
-    Location location;
-    location.x = next_scaled("component X coordinate");
-    location.y = next_scaled("component Y coordinate");
+    Location loc;
+    loc.x = next_scaled("component X coordinate");
+    loc.y = next_scaled("component Y coordinate");
     tokens_.expect(")");
     tokens_.require("component orientation");
-    location.orientation = orientation(tokens_.token(), tokens_);
-    location.status = status;
-    return location;
+    loc.orientation = orientation(tokens_.token(), tokens_);
+    loc.status = status;
+    return loc;
   }
 
   void parse_components() {
-    if (components_seen_)
+    if (comps_seen_)
       tokens_.fail("duplicate COMPONENTS section");
 
     CountedSection components(tokens_);
     if (components.declared() >= NO_MACRO)
       tokens_.fail("component count exceeds placement model limit");
     board_.cells.reserve(static_cast<std::size_t>(components.declared()));
-    masters_by_cell_.reserve(static_cast<std::size_t>(components.declared()));
+    masters_.reserve(static_cast<std::size_t>(components.declared()));
 
     while (components.next()) {
       tokens_.require("component instance name");
@@ -791,10 +791,10 @@ private:
       const auto macro = library_.find_macro(tokens_.token());
       if (!macro)
         tokens_.fail("component references unknown macro '" + std::string(tokens_.token()) + "'");
-      const auto &definition = library_.macro(*macro);
-      cell.width = definition.width;
-      cell.height = definition.height;
-      cell.macro = definition.macro;
+      const auto &def = library_.macro(*macro);
+      cell.width = def.width;
+      cell.height = def.height;
+      cell.macro = def.macro;
 
       while (tokens_.next() && tokens_.token() != ";")
         if (tokens_.token() == "PLACED")
@@ -803,10 +803,10 @@ private:
           cell.location = parse_component_location(PlacementStatus::Fixed);
 
       board_.cells.push_back(std::move(cell));
-      masters_by_cell_.push_macro(*macro);
+      masters_.push_macro(*macro);
     }
 
-    components_seen_ = true;
+    comps_seen_ = true;
   }
 
   [[nodiscard]] Bounds parse_def_rectangle() {
@@ -818,13 +818,13 @@ private:
     const auto x1 = next_scaled("rectangle X coordinate");
     const auto y1 = next_scaled("rectangle Y coordinate");
     tokens_.expect(")");
-    Bounds result;
-    result.include(x0, y0, x1, y1);
-    return result;
+    Bounds res;
+    res.include(x0, y0, x1, y1);
+    return res;
   }
 
   void parse_pins() {
-    if (!components_seen_)
+    if (!comps_seen_)
       tokens_.fail("COMPONENTS must precede PINS");
     if (pins_seen_)
       tokens_.fail("duplicate PINS section");
@@ -833,8 +833,8 @@ private:
     if (pins.declared() >= static_cast<std::uint64_t>(NO_MACRO) - board_.cells.size())
       tokens_.fail("cell count exceeds placement model limit");
     board_.cells.reserve(board_.cells.size() + static_cast<std::size_t>(pins.declared()));
-    masters_by_cell_.reserve(board_.cells.capacity());
-    top_pin_first_cell_ = board_.cells.size();
+    masters_.reserve(board_.cells.capacity());
+    first_top_pin_ = board_.cells.size();
     top_pins_.reserve(static_cast<std::size_t>(pins.declared()));
 
     while (pins.next()) {
@@ -860,8 +860,8 @@ private:
           anchor = parse_component_location(PlacementStatus::FixedNonInteracting);
         } else if (tokens_.token() == "LAYER") {
           tokens_.require("pin layer name");
-          const auto rectangle = parse_def_rectangle();
-          geometry.include(rectangle.min_x, rectangle.min_y, rectangle.max_x, rectangle.max_y);
+          const auto rect = parse_def_rectangle();
+          geometry.include(rect.min_x, rect.min_y, rect.max_x, rect.max_y);
         }
       }
 
@@ -882,7 +882,7 @@ private:
       }
 
       board_.cells.push_back(std::move(cell));
-      masters_by_cell_.push_top_pin();
+      masters_.push_top_pin();
       top_pins_.push_back({direction, std::move(net_name), false});
     }
 
@@ -900,16 +900,16 @@ private:
           placement = false;
           tokens_.require("blockage layer name");
         } else if (tokens_.token() == "RECT") {
-          const auto rectangle = parse_def_rectangle();
+          const auto rect = parse_def_rectangle();
           if (placement)
-            placement_blockages_.push_back(rectangle);
+            blockages_.push_back(rect);
         }
       }
     }
   }
 
   void parse_nets() {
-    if (!components_seen_ || !pins_seen_)
+    if (!comps_seen_ || !pins_seen_)
       tokens_.fail("COMPONENTS and PINS must precede NETS");
     if (nets_seen_)
       tokens_.fail("duplicate NETS section");
@@ -918,10 +918,10 @@ private:
     if (nets.declared() > std::numeric_limits<std::size_t>::max())
       tokens_.fail("net count exceeds placement model limit");
     board_.nets.reserve(static_cast<std::size_t>(nets.declared()));
-    const auto reserve_pins = nets.declared() > std::numeric_limits<std::size_t>::max() / 4 ? std::numeric_limits<std::size_t>::max()
+    const auto pin_capacity = nets.declared() > std::numeric_limits<std::size_t>::max() / 4 ? std::numeric_limits<std::size_t>::max()
                                                                                             : static_cast<std::size_t>(nets.declared()) * 4;
-    board_.pins.reserve(reserve_pins);
-    const NameIndex<Cell> cell_index(board_.cells, path_);
+    board_.pins.reserve(pin_capacity);
+    const NameIndex<Cell> cell_idx(board_.cells, path_);
 
     while (nets.next()) {
       tokens_.require("net name");
@@ -935,12 +935,12 @@ private:
           Pin pin;
           if (tokens_.token() == "PIN") {
             tokens_.require("top-level pin endpoint name");
-            const auto cell = cell_index.find(tokens_.token());
-            const auto master = cell ? masters_by_cell_[*cell] : std::nullopt;
+            const auto cell = cell_idx.find(tokens_.token());
+            const auto master = cell ? masters_[*cell] : std::nullopt;
             if (!cell || master)
               tokens_.fail("net references unknown top-level pin '" + std::string(tokens_.token()) + "'");
             pin.cell = *cell;
-            const auto top_pin = static_cast<std::size_t>(*cell) - top_pin_first_cell_;
+            const auto top_pin = static_cast<std::size_t>(*cell) - first_top_pin_;
             auto &state = top_pins_[top_pin];
             if (state.net_name != net.name)
               tokens_.fail("top-level pin belongs to net '" + state.net_name + "', not '" + net.name + "'");
@@ -949,19 +949,19 @@ private:
             state.connected = true;
             pin.direction = state.direction;
           } else {
-            const auto cell = cell_index.find(tokens_.token());
-            const auto master = cell ? masters_by_cell_[*cell] : std::nullopt;
+            const auto cell = cell_idx.find(tokens_.token());
+            const auto master = cell ? masters_[*cell] : std::nullopt;
             if (!master)
               tokens_.fail("net references unknown component '" + std::string(tokens_.token()) + "'");
             pin.cell = *cell;
             const auto &macro = library_.macro(*master);
             tokens_.require("component pin name");
-            const auto *definition = macro.find_pin(tokens_.token());
-            if (!definition)
+            const auto *def = macro.find_pin(tokens_.token());
+            if (!def)
               tokens_.fail("component pin references unknown macro pin '" + std::string(tokens_.token()) + "'");
-            pin.direction = definition->direction;
-            pin.offset_x = definition->x - macro.width / 2.0;
-            pin.offset_y = definition->y - macro.height / 2.0;
+            pin.direction = def->direction;
+            pin.offset_x = def->x - macro.width / 2.0;
+            pin.offset_y = def->y - macro.height / 2.0;
           }
           tokens_.expect(")");
           board_.pins.push_back(pin);
@@ -993,28 +993,28 @@ private:
   }
 
   void apply_blockages() {
-    for (const auto &blockage : placement_blockages_) {
+    for (const auto &blkg : blockages_) {
       for (auto &row : board_.rows) {
-        if (blockage.min_y >= row.coordinate + row.height || blockage.max_y <= row.coordinate)
+        if (blkg.min_y >= row.coordinate + row.height || blkg.max_y <= row.coordinate)
           continue;
 
-        std::vector<Subrow> available;
-        available.reserve(row.subrows.size() + 1);
+        std::vector<Subrow> kept;
+        kept.reserve(row.subrows.size() + 1);
         for (const auto &subrow : row.subrows) {
-          const auto first_value = std::floor((blockage.min_x - row.site_width - subrow.origin) / row.site_spacing) + 1.0;
-          const auto last_value = std::ceil((blockage.max_x - subrow.origin) / row.site_spacing);
-          const auto first = clamp_site_index(first_value, subrow.site_count);
-          const auto last = clamp_site_index(last_value, subrow.site_count);
+          const auto first_pos = std::floor((blkg.min_x - row.site_width - subrow.origin) / row.site_spacing) + 1.0;
+          const auto last_pos = std::ceil((blkg.max_x - subrow.origin) / row.site_spacing);
+          const auto first = clamp_site_index(first_pos, subrow.site_count);
+          const auto last = clamp_site_index(last_pos, subrow.site_count);
           if (first >= last) {
-            available.push_back(subrow);
+            kept.push_back(subrow);
             continue;
           }
           if (first != 0)
-            available.push_back({subrow.origin, first});
+            kept.push_back({subrow.origin, first});
           if (last != subrow.site_count)
-            available.push_back({subrow.origin + static_cast<double>(last) * row.site_spacing, subrow.site_count - last});
+            kept.push_back({subrow.origin + static_cast<double>(last) * row.site_spacing, subrow.site_count - last});
         }
-        row.subrows = std::move(available);
+        row.subrows = std::move(kept);
       }
     }
   }
@@ -1023,13 +1023,13 @@ private:
   Tokens tokens_;
   const Library &library_;
   Board board_;
-  MasterIndices masters_by_cell_;
+  MasterIndices masters_;
   std::vector<TopPinState> top_pins_;
-  std::vector<Bounds> placement_blockages_;
-  std::size_t top_pin_first_cell_{};
-  std::uint64_t database_units_{};
+  std::vector<Bounds> blockages_;
+  std::size_t first_top_pin_{};
+  std::uint64_t db_units_{};
   bool units_seen_{};
-  bool components_seen_{};
+  bool comps_seen_{};
   bool pins_seen_{};
   bool nets_seen_{};
   bool ended_{};
@@ -1037,26 +1037,26 @@ private:
 
 class LefDefParser final : public Parser {
 public:
-  explicit LefDefParser(LefDefParseOptions options) : options_(std::move(options)) {}
+  explicit LefDefParser(LefDefParseOptions opts) : opts_(std::move(opts)) {}
 
-  [[nodiscard]] Board parse(const std::filesystem::path &input) const override {
-    if (options_.lef_files.empty())
+  [[nodiscard]] Board parse(const std::filesystem::path &in) const override {
+    if (opts_.lef_files.empty())
       throw Error("LEF/DEF parsing requires at least one --lef-file");
 
     Library library;
-    for (const auto &path : options_.lef_files)
+    for (const auto &path : opts_.lef_files)
       parse_lef(path, library);
     library.finalize();
 
-    return DefParser(input, library).parse();
+    return DefParser(in, library).parse();
   }
 
 private:
-  LefDefParseOptions options_;
+  LefDefParseOptions opts_;
 };
 
 } // namespace
 
-std::unique_ptr<Parser> make_parser(LefDefParseOptions options) { return std::make_unique<LefDefParser>(std::move(options)); }
+std::unique_ptr<Parser> make_parser(LefDefParseOptions opts) { return std::make_unique<LefDefParser>(std::move(opts)); }
 
 } // namespace placement

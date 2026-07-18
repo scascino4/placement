@@ -12,7 +12,7 @@ namespace placement {
 class Renderer {
 public:
   virtual ~Renderer() = default;
-  virtual void render(const Board &board, const std::filesystem::path &output) const = 0;
+  virtual void render(const Board &board, const std::filesystem::path &out) const = 0;
 };
 
 struct RenderOptions {
@@ -20,6 +20,6 @@ struct RenderOptions {
   bool dark_mode{};
 };
 
-[[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions options = {});
+[[nodiscard]] std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions opts = {});
 
 } // namespace placement

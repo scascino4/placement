@@ -28,15 +28,15 @@ public:
     // to Records::next() reuses the line buffer. Reusing the vector also
     // avoids an allocation for every record in multi-million-line files.
     fields_.clear();
-    std::size_t position = 0;
-    while (position < line_.size()) {
-      while (position < line_.size() && static_cast<unsigned char>(line_[position]) <= static_cast<unsigned char>(' '))
-        ++position;
-      const auto begin = position;
-      while (position < line_.size() && static_cast<unsigned char>(line_[position]) > static_cast<unsigned char>(' '))
-        ++position;
-      if (begin != position)
-        fields_.emplace_back(line_.data() + begin, position - begin);
+    std::size_t pos = 0;
+    while (pos < line_.size()) {
+      while (pos < line_.size() && static_cast<unsigned char>(line_[pos]) <= static_cast<unsigned char>(' '))
+        ++pos;
+      const auto begin = pos;
+      while (pos < line_.size() && static_cast<unsigned char>(line_[pos]) > static_cast<unsigned char>(' '))
+        ++pos;
+      if (begin != pos)
+        fields_.emplace_back(line_.data() + begin, pos - begin);
     }
     return fields_;
   }
@@ -50,14 +50,14 @@ private:
 
 class Records {
 public:
-  explicit Records(const std::filesystem::path &path) : path_(path), input_(path) {
-    if (!input_)
+  explicit Records(const std::filesystem::path &path) : path_(path), in_(path) {
+    if (!in_)
       throw Error("cannot open " + path.string());
   }
 
   bool next(Record &record) {
-    while (std::getline(input_, record.line_)) {
-      ++line_number_;
+    while (std::getline(in_, record.line_)) {
+      ++line_;
 
       const auto comment = record.line_.find('#');
       if (comment != std::string::npos)
@@ -67,19 +67,17 @@ public:
         return true;
     }
 
-    if (input_.bad())
+    if (in_.bad())
       throw Error("failed while reading " + path_.string());
     return false;
   }
 
-  [[noreturn]] void fail(std::string_view message) const {
-    throw Error(path_.string() + ':' + std::to_string(line_number_) + ": " + std::string(message));
-  }
+  [[noreturn]] void fail(std::string_view message) const { throw Error(path_.string() + ':' + std::to_string(line_) + ": " + std::string(message)); }
 
 private:
   std::filesystem::path path_;
-  std::ifstream input_;
-  std::uint64_t line_number_{};
+  std::ifstream in_;
+  std::uint64_t line_{};
 };
 
 void require_header(Records &records, std::string_view expected) {
@@ -115,7 +113,7 @@ struct Components {
   if (format != "rowbasedplacement" && format != "stdcellplacement")
     records.fail("unsupported AUX format '" + std::string(fields[0]) + "'");
 
-  Components components;
+  Components parts;
   std::unordered_set<std::string> suffixes;
   for (std::size_t i = 2; i < fields.size(); ++i) {
     const std::filesystem::path component(fields[i]);
@@ -126,23 +124,23 @@ struct Components {
 
     const auto resolved = path.parent_path() / component;
     if (suffix == ".nodes")
-      components.nodes = resolved;
+      parts.nodes = resolved;
     else if (suffix == ".nets")
-      components.nets = resolved;
+      parts.nets = resolved;
     else if (suffix == ".wts")
-      components.weights = resolved;
+      parts.weights = resolved;
     else if (suffix == ".pl")
-      components.placement = resolved;
+      parts.placement = resolved;
     else if (suffix == ".scl")
-      components.rows = resolved;
+      parts.rows = resolved;
     else
       records.fail("unsupported component suffix '" + suffix + "'");
   }
 
-  if (components.nodes.empty() || components.nets.empty() || components.placement.empty() || components.rows.empty())
+  if (parts.nodes.empty() || parts.nets.empty() || parts.placement.empty() || parts.rows.empty())
     records.fail("manifest requires .nodes, .nets, .pl, and .scl components");
 
-  return components;
+  return parts;
 }
 
 void parse_nodes(const std::filesystem::path &path, Board &board) {
@@ -219,7 +217,7 @@ void parse_nodes(const std::filesystem::path &path, Board &board) {
 using CellIndex = NameIndex<Cell>;
 using NetIndex = NameIndex<Net>;
 
-void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex &cell_index) {
+void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex &cell_idx) {
   Records records(path);
   require_header(records, "nets");
   Record record;
@@ -269,7 +267,7 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
       if (pin_fields.size() < 2)
         records.fail("pin record requires cell and direction");
 
-      const auto cell = cell_index.find(pin_fields[0]);
+      const auto cell = cell_idx.find(pin_fields[0]);
       if (!cell)
         records.fail("pin references unknown cell '" + std::string(pin_fields[0]) + "'");
 
@@ -299,14 +297,14 @@ void parse_nets(const std::filesystem::path &path, Board &board, const CellIndex
     records.fail("NumPins does not match records");
 }
 
-void parse_weights(const std::filesystem::path &path, Board &board, const CellIndex &cell_index) {
+void parse_weights(const std::filesystem::path &path, Board &board, const CellIndex &cell_idx) {
   Records records(path);
   require_header(records, "wts");
   Record record;
-  std::optional<std::size_t> node_weight_count;
-  std::optional<std::size_t> net_weight_count;
+  std::optional<std::size_t> cell_weight_size;
+  std::optional<std::size_t> net_weight_size;
   std::unordered_set<std::string> seen;
-  std::optional<NetIndex> net_index;
+  std::optional<NetIndex> net_idx;
 
   while (records.next(record)) {
     const auto &fields = record.fields();
@@ -323,22 +321,22 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
     // Bookshelf permits different vector dimensions for cells and nets, but
     // records of the same kind must agree so downstream consumers see a
     // consistent feature vector.
-    if (const auto cell = cell_index.find(fields[0])) {
-      if (node_weight_count && *node_weight_count != values.size())
+    if (const auto cell = cell_idx.find(fields[0])) {
+      if (cell_weight_size && *cell_weight_size != values.size())
         records.fail("inconsistent node weight dimension");
-      node_weight_count = values.size();
+      cell_weight_size = values.size();
       board.cells[*cell].weights = std::move(values);
     } else {
       // Most benchmark weight files contain only the header. Defer the
       // multi-million-net lookup table until a record actually needs it.
-      if (!net_index)
-        net_index.emplace(board.nets, path);
-      const auto net = net_index->find(fields[0]);
+      if (!net_idx)
+        net_idx.emplace(board.nets, path);
+      const auto net = net_idx->find(fields[0]);
       if (!net)
         records.fail("weight references unknown cell or net '" + std::string(fields[0]) + "'");
-      if (net_weight_count && *net_weight_count != values.size())
+      if (net_weight_size && *net_weight_size != values.size())
         records.fail("inconsistent net weight dimension");
-      net_weight_count = values.size();
+      net_weight_size = values.size();
       board.nets[*net].weights = std::move(values);
     }
   }
@@ -352,11 +350,11 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   if (!records.next(record))
     records.fail("missing NumRows");
 
-  const auto &declaration = record.fields();
-  if (declaration.size() < 3 || declaration[0] != "NumRows" || declaration[1] != ":")
+  const auto &decl = record.fields();
+  if (decl.size() < 3 || decl[0] != "NumRows" || decl[1] != ":")
     records.fail("expected NumRows declaration");
 
-  const auto declared = number<std::uint64_t>(declaration[2], records, "row count");
+  const auto declared = number<std::uint64_t>(decl[2], records, "row count");
   board.rows.reserve(static_cast<std::size_t>(declared));
 
   while (records.next(record)) {
@@ -371,34 +369,34 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     bool ended = false;
 
     while (records.next(record)) {
-      const auto &property_fields = record.fields();
+      const auto &props = record.fields();
 
-      if (property_fields[0] == "End") {
+      if (props[0] == "End") {
         ended = true;
         break;
       }
 
-      if (property_fields.size() < 3 || property_fields[1] != ":")
+      if (props.size() < 3 || props[1] != ":")
         records.fail("malformed row property");
 
-      if (property_fields[0] == "Coordinate") {
-        row.coordinate = number<double>(property_fields[2], records, "row coordinate");
+      if (props[0] == "Coordinate") {
+        row.coordinate = number<double>(props[2], records, "row coordinate");
         coordinate = true;
-      } else if (property_fields[0] == "Height") {
-        row.height = number<double>(property_fields[2], records, "row height");
-      } else if (property_fields[0] == "Sitewidth") {
-        row.site_width = number<double>(property_fields[2], records, "site width");
+      } else if (props[0] == "Height") {
+        row.height = number<double>(props[2], records, "row height");
+      } else if (props[0] == "Sitewidth") {
+        row.site_width = number<double>(props[2], records, "site width");
         width = true;
-      } else if (property_fields[0] == "Sitespacing") {
-        row.site_spacing = number<double>(property_fields[2], records, "site spacing");
+      } else if (props[0] == "Sitespacing") {
+        row.site_spacing = number<double>(props[2], records, "site spacing");
         spacing = true;
-      } else if (property_fields[0] == "Siteorient") {
-        row.site_orientation = orientation(property_fields[2], records);
-      } else if (property_fields[0] == "Sitesymmetry") {
+      } else if (props[0] == "Siteorient") {
+        row.site_orientation = orientation(props[2], records);
+      } else if (props[0] == "Sitesymmetry") {
         // Store the independent Bookshelf symmetry capabilities as a compact
         // bit mask; see Row::symmetry in the format-neutral model.
-        for (std::size_t i = 2; i < property_fields.size(); ++i) {
-          const auto value = lower(property_fields[i]);
+        for (std::size_t i = 2; i < props.size(); ++i) {
+          const auto value = lower(props[i]);
           if (value == "x")
             row.symmetry |= 1;
           else if (value == "y")
@@ -406,15 +404,14 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
           else if (value == "rot90" || value == "r90")
             row.symmetry |= 4;
           else if (value != "1" && value != "none")
-            records.fail("unknown site symmetry '" + std::string(property_fields[i]) + "'");
+            records.fail("unknown site symmetry '" + std::string(props[i]) + "'");
         }
-      } else if (property_fields[0] == "SubrowOrigin") {
-        if (property_fields.size() < 6 || property_fields[3] != "NumSites" || property_fields[4] != ":")
+      } else if (props[0] == "SubrowOrigin") {
+        if (props.size() < 6 || props[3] != "NumSites" || props[4] != ":")
           records.fail("SubrowOrigin requires 'NumSites : <count>'");
-        row.subrows.push_back(
-            {number<double>(property_fields[2], records, "subrow origin"), number<std::uint64_t>(property_fields[5], records, "site count")});
+        row.subrows.push_back({number<double>(props[2], records, "subrow origin"), number<std::uint64_t>(props[5], records, "site count")});
       } else {
-        records.fail("unknown row property '" + std::string(property_fields[0]) + "'");
+        records.fail("unknown row property '" + std::string(props[0]) + "'");
       }
     }
 
@@ -454,7 +451,7 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
   return std::pair{number<double>(value.substr(0, comma), records, "DIMS width"), number<double>(value.substr(comma + 1), records, "DIMS height")};
 }
 
-void parse_placement(const std::filesystem::path &path, Board &board, const CellIndex &cell_index) {
+void parse_placement(const std::filesystem::path &path, Board &board, const CellIndex &cell_idx) {
   Records records(path);
   require_header(records, "pl");
   Record record;
@@ -464,7 +461,7 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
     if (fields.size() < 3)
       records.fail("placement requires cell, X, and Y");
 
-    const auto cell = cell_index.find(fields[0]);
+    const auto cell = cell_idx.find(fields[0]);
     if (!cell)
       records.fail("placement references unknown cell '" + std::string(fields[0]) + "'");
     if (board.cells[*cell].location)
@@ -488,9 +485,9 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
         location.status = PlacementStatus::Fixed;
       else if (ascii_iequal(field, "fixed_ni"))
         location.status = PlacementStatus::FixedNonInteracting;
-      else if (const auto dimensions = parse_dims(field, records)) {
-        location.width = dimensions->first;
-        location.height = dimensions->second;
+      else if (const auto dims = parse_dims(field, records)) {
+        location.width = dims->first;
+        location.height = dims->second;
       } else {
         location.orientation = orientation(field, records);
       }
@@ -505,37 +502,37 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
 
 class BookshelfParser final : public Parser {
 public:
-  explicit BookshelfParser(BookshelfParseOptions options) : options_(std::move(options)) {}
+  explicit BookshelfParser(BookshelfParseOptions opts) : opts_(std::move(opts)) {}
 
-  [[nodiscard]] Board parse(const std::filesystem::path &input) const override {
-    auto components = parse_aux(input);
-    if (options_.placement_override)
-      components.placement = *options_.placement_override;
+  [[nodiscard]] Board parse(const std::filesystem::path &in) const override {
+    auto parts = parse_aux(in);
+    if (opts_.placement_override)
+      parts.placement = *opts_.placement_override;
 
     Board board;
-    board.name = input.stem().stem().string();
+    board.name = in.stem().stem().string();
 
     // Parse in dependency order. Names are resolved once into compact numeric
     // indices; the core Board therefore remains independent of Bookshelf.
-    parse_nodes(components.nodes, board);
-    const CellIndex cell_index(board.cells, components.nodes);
+    parse_nodes(parts.nodes, board);
+    const CellIndex cell_idx(board.cells, parts.nodes);
 
-    parse_nets(components.nets, board, cell_index);
-    if (components.weights)
-      parse_weights(*components.weights, board, cell_index);
+    parse_nets(parts.nets, board, cell_idx);
+    if (parts.weights)
+      parse_weights(*parts.weights, board, cell_idx);
 
-    parse_rows(components.rows, board);
-    parse_placement(components.placement, board, cell_index);
+    parse_rows(parts.rows, board);
+    parse_placement(parts.placement, board, cell_idx);
 
     return board;
   }
 
 private:
-  BookshelfParseOptions options_;
+  BookshelfParseOptions opts_;
 };
 
 } // namespace
 
-std::unique_ptr<Parser> make_parser(BookshelfParseOptions options) { return std::make_unique<BookshelfParser>(std::move(options)); }
+std::unique_ptr<Parser> make_parser(BookshelfParseOptions opts) { return std::make_unique<BookshelfParser>(std::move(opts)); }
 
 } // namespace placement

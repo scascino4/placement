@@ -6,9 +6,9 @@ namespace placement::test {
 namespace {
 
 void bookshelf_parser_test() {
-  TemporaryDirectory temporary;
-  bookshelf_fixture(temporary.path());
-  const auto board = parse_bookshelf_fixture(temporary.path());
+  TemporaryDirectory tmp;
+  bookshelf_fixture(tmp.path());
+  const auto board = parse_bookshelf_fixture(tmp.path());
   check(board.name == "tiny", "design name");
   check(board.cells.size() == 4 && board.rows.size() == 1, "cell and row counts");
   check(board.nets.size() == 2 && board.pins.size() == 4, "net and pin counts");
@@ -28,9 +28,9 @@ void bookshelf_parser_test() {
 }
 
 void lefdef_parser_test() {
-  TemporaryDirectory temporary;
-  lefdef_fixture(temporary.path());
-  const auto board = parse_lefdef_fixture(temporary.path());
+  TemporaryDirectory tmp;
+  lefdef_fixture(tmp.path());
+  const auto board = parse_lefdef_fixture(tmp.path());
   check(board.name == "tiny_def", "LEF/DEF design name");
   check(board.cells.size() == 3 && board.rows.size() == 1, "LEF/DEF cell and row counts");
   check(board.nets.size() == 2 && board.pins.size() == 4, "LEF/DEF net and endpoint counts");
@@ -51,76 +51,76 @@ void lefdef_parser_test() {
 }
 
 void malformed_bookshelf_test() {
-  TemporaryDirectory temporary;
-  bookshelf_fixture(temporary.path());
-  write(temporary.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 1\nNumPins : 1\n"
-                                        "NetDegree : 1 broken\nmissing I : 0 0\n");
-  expect_error([&] { (void)parse_bookshelf_fixture(temporary.path()); }, "pin references unknown cell");
+  TemporaryDirectory tmp;
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 1\nNumPins : 1\n"
+                                  "NetDegree : 1 broken\nmissing I : 0 0\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "pin references unknown cell");
 
-  bookshelf_fixture(temporary.path());
-  write(temporary.path() / "tiny.nodes", "UCLA nodes 1.0\nNumNodes : 2\nNumTerminals : 0\n"
-                                         "duplicate 1 1\nduplicate 2 2\n");
-  expect_error([&] { (void)parse_bookshelf_fixture(temporary.path()); }, "duplicate cell name 'duplicate'");
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nodes", "UCLA nodes 1.0\nNumNodes : 2\nNumTerminals : 0\n"
+                                   "duplicate 1 1\nduplicate 2 2\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate cell name 'duplicate'");
 
-  bookshelf_fixture(temporary.path());
-  write(temporary.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 2\nNumPins : 0\n"
-                                        "NetDegree : 0 duplicate\nNetDegree : 0 duplicate\n");
-  expect_error([&] { (void)parse_bookshelf_fixture(temporary.path()); }, "duplicate net name 'duplicate'");
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 2\nNumPins : 0\n"
+                                  "NetDegree : 0 duplicate\nNetDegree : 0 duplicate\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate net name 'duplicate'");
 }
 
 void malformed_lefdef_test() {
-  TemporaryDirectory temporary;
-  lefdef_fixture(temporary.path());
-  auto contents = read(temporary.path() / "design.def");
-  auto position = contents.find("u1 NAND");
-  check(position != std::string::npos, "fixture component exists");
-  contents.replace(position, std::string_view("u1 NAND").size(), "u1 MISSING");
-  write(temporary.path() / "design.def", contents);
-  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "component references unknown macro 'MISSING'");
+  TemporaryDirectory tmp;
+  lefdef_fixture(tmp.path());
+  auto text = read(tmp.path() / "design.def");
+  auto pos = text.find("u1 NAND");
+  check(pos != std::string::npos, "fixture component exists");
+  text.replace(pos, std::string_view("u1 NAND").size(), "u1 MISSING");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "component references unknown macro 'MISSING'");
 
-  lefdef_fixture(temporary.path());
-  contents = read(temporary.path() / "design.def");
-  position = contents.find("( u1 A )");
-  check(position != std::string::npos, "fixture endpoint exists");
-  contents.replace(position, std::string_view("( u1 A )").size(), "( u1 MISSING )");
-  write(temporary.path() / "design.def", contents);
-  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "component pin references unknown macro pin 'MISSING'");
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "design.def");
+  pos = text.find("( u1 A )");
+  check(pos != std::string::npos, "fixture endpoint exists");
+  text.replace(pos, std::string_view("( u1 A )").size(), "( u1 MISSING )");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "component pin references unknown macro pin 'MISSING'");
 
-  lefdef_fixture(temporary.path());
-  contents = read(temporary.path() / "design.def");
-  position = contents.find("COMPONENTS 2");
-  check(position != std::string::npos, "fixture component count exists");
-  contents.replace(position, std::string_view("COMPONENTS 2").size(), "COMPONENTS 3");
-  write(temporary.path() / "design.def", contents);
-  expect_error([&] { (void)parse_lefdef_fixture(temporary.path()); }, "COMPONENTS count does not match records");
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "design.def");
+  pos = text.find("COMPONENTS 2");
+  check(pos != std::string::npos, "fixture component count exists");
+  text.replace(pos, std::string_view("COMPONENTS 2").size(), "COMPONENTS 3");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "COMPONENTS count does not match records");
 
-  lefdef_fixture(temporary.path());
-  LefDefParseOptions options;
-  options.lef_files = {temporary.path() / "tech.lef", temporary.path() / "tech.lef", temporary.path() / "cells.lef"};
-  auto duplicate_library_parser = make_parser(std::move(options));
-  expect_error([&] { (void)duplicate_library_parser->parse(temporary.path() / "design.def"); }, "duplicate site name 'core'");
+  lefdef_fixture(tmp.path());
+  LefDefParseOptions opts;
+  opts.lef_files = {tmp.path() / "tech.lef", tmp.path() / "tech.lef", tmp.path() / "cells.lef"};
+  auto dup_parser = make_parser(std::move(opts));
+  expect_error([&] { (void)dup_parser->parse(tmp.path() / "design.def"); }, "duplicate site name 'core'");
 
   auto parser = make_parser(LefDefParseOptions{});
-  expect_error([&] { (void)parser->parse(temporary.path() / "design.def"); }, "requires at least one --lef-file");
+  expect_error([&] { (void)parser->parse(tmp.path() / "design.def"); }, "requires at least one --lef-file");
 }
 
 void placement_override_test() {
-  TemporaryDirectory temporary;
-  bookshelf_fixture(temporary.path());
-  const auto override = temporary.path() / "dreamplace.pl";
+  TemporaryDirectory tmp;
+  bookshelf_fixture(tmp.path());
+  const auto override = tmp.path() / "dreamplace.pl";
   write(override, "UCLA pl 1.0\na 101 202 : S\nb 303 404 : N\n");
-  write(temporary.path() / "tiny.pl", "this file must not be parsed\n");
-  BookshelfParseOptions options;
-  options.placement_override = override;
-  auto parser = make_parser(std::move(options));
-  const auto board = parser->parse(temporary.path() / "tiny.aux");
+  write(tmp.path() / "tiny.pl", "this file must not be parsed\n");
+  BookshelfParseOptions opts;
+  opts.placement_override = override;
+  auto parser = make_parser(std::move(opts));
+  const auto board = parser->parse(tmp.path() / "tiny.aux");
   check(board.cells[0].location->x == 101 && board.cells[0].location->y == 202, "placement override coordinates");
   check(board.cells[0].location->orientation == Orientation::S, "placement override orientation");
   check(board.cells[1].location->status == PlacementStatus::Movable && board.cells[1].macro, "placement override preserves movable macro identity");
   check(!board.cells[2].location && !board.cells[3].location, "placement override may leave cells unplaced");
 
   write(override, "UCLA pl 1.0\nunknown 1 2 : N\n");
-  expect_error([&] { (void)parser->parse(temporary.path() / "tiny.aux"); }, override.string() + ":2: placement references unknown cell");
+  expect_error([&] { (void)parser->parse(tmp.path() / "tiny.aux"); }, override.string() + ":2: placement references unknown cell");
 }
 
 } // namespace

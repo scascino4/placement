@@ -11,39 +11,39 @@
 
 namespace {
 
-void usage(std::ostream &output) {
-  output << "Usage: placement_render [--serialization-format binary] "
-            "[--output-format svg|utilization-svg|pin-density-svg|cell-density-svg] [--bin-size size] [--dark-mode] <input> <output>\n";
+void usage(std::ostream &out) {
+  out << "Usage: placement_render [--serialization-format binary] "
+         "[--output-format svg|utilization-svg|pin-density-svg|cell-density-svg] [--bin-size size] [--dark-mode] <input> <output>\n";
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
   try {
-    std::string serialization_format = "binary";
-    std::string output_format = "svg";
+    std::string ser_fmt = "binary";
+    std::string out_fmt = "svg";
     std::optional<double> bin_size;
     bool dark_mode = false;
     int arg = 1;
 
     while (arg < argc && std::string_view(argv[arg]).starts_with("--")) {
-      const std::string_view option(argv[arg++]);
-      if (option == "--help") {
+      const std::string_view opt(argv[arg++]);
+      if (opt == "--help") {
         usage(std::cout);
         return 0;
       }
-      if (option == "--dark-mode") {
+      if (opt == "--dark-mode") {
         dark_mode = true;
         continue;
       }
       if (arg >= argc)
-        throw placement::Error(std::string(option) + " requires a value");
+        throw placement::Error(std::string(opt) + " requires a value");
 
-      if (option == "--serialization-format") {
-        serialization_format = argv[arg++];
-      } else if (option == "--output-format") {
-        output_format = argv[arg++];
-      } else if (option == "--bin-size") {
+      if (opt == "--serialization-format") {
+        ser_fmt = argv[arg++];
+      } else if (opt == "--output-format") {
+        out_fmt = argv[arg++];
+      } else if (opt == "--bin-size") {
         const std::string value(argv[arg++]);
         std::size_t consumed = 0;
 
@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
         if (consumed != value.size())
           throw placement::Error("invalid bin size '" + value + "'");
       } else {
-        throw placement::Error("unknown option '" + std::string(option) + "'");
+        throw placement::Error("unknown option '" + std::string(opt) + "'");
       }
     }
 
@@ -65,15 +65,15 @@ int main(int argc, char **argv) {
       return 2;
     }
 
-    const std::filesystem::path input(argv[arg]);
-    const std::filesystem::path output(argv[arg + 1]);
+    const std::filesystem::path in(argv[arg]);
+    const std::filesystem::path out(argv[arg + 1]);
 
-    auto serializer = placement::make_serializer(serialization_format);
-    auto renderer = placement::make_renderer(output_format, {.bin_size = bin_size, .dark_mode = dark_mode});
-    const auto board = serializer->read(input);
-    renderer->render(board, output);
+    auto serializer = placement::make_serializer(ser_fmt);
+    auto renderer = placement::make_renderer(out_fmt, {.bin_size = bin_size, .dark_mode = dark_mode});
+    const auto board = serializer->read(in);
+    renderer->render(board, out);
 
-    std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << output << '\n';
+    std::cout << board.name << ": rendered " << board.cells.size() << " cells -> " << out << '\n';
 
     return 0;
   } catch (const std::exception &error) {

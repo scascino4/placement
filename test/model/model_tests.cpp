@@ -4,11 +4,11 @@ namespace placement::test {
 namespace {
 
 Row row(double width, double height) {
-  Row result;
-  result.height = height;
-  result.site_spacing = 1;
-  result.subrows.push_back({0, static_cast<std::uint64_t>(width)});
-  return result;
+  Row res;
+  res.height = height;
+  res.site_spacing = 1;
+  res.subrows.push_back({0, static_cast<std::uint64_t>(width)});
+  return res;
 }
 
 void placed_rectangle_test() {
@@ -21,13 +21,13 @@ void placed_rectangle_test() {
 
   for (const auto orientation : {Orientation::N, Orientation::S, Orientation::FN, Orientation::FS}) {
     cell.location->orientation = orientation;
-    const auto rectangle = placed_rectangle(cell);
-    check(rectangle.x == 2 && rectangle.y == 5 && rectangle.width == 3 && rectangle.height == 7, "unrotated cell footprint");
+    const auto rect = placed_rectangle(cell);
+    check(rect.x == 2 && rect.y == 5 && rect.width == 3 && rect.height == 7, "unrotated cell footprint");
   }
   for (const auto orientation : {Orientation::E, Orientation::W, Orientation::FE, Orientation::FW}) {
     cell.location->orientation = orientation;
-    const auto rectangle = placed_rectangle(cell);
-    check(rectangle.width == 7 && rectangle.height == 3, "rotated cell footprint");
+    const auto rect = placed_rectangle(cell);
+    check(rect.width == 7 && rect.height == 3, "rotated cell footprint");
   }
 
   cell.location->width = 11;
@@ -146,9 +146,8 @@ void cell_density_test() {
         "cell density clips edge bins and excludes non-interacting cells");
 
   board.cells[1].location->status = PlacementStatus::Movable;
-  const auto movable_macro_grid = board.cell_density(10);
-  check(close(*movable_macro_grid.at(0, 0).density(), 1) && close(movable_macro_grid.at(0, 0).movable_area, 100) &&
-            close(movable_macro_grid.at(0, 0).available_area, 100),
+  const auto macro_grid = board.cell_density(10);
+  check(close(*macro_grid.at(0, 0).density(), 1) && close(macro_grid.at(0, 0).movable_area, 100) && close(macro_grid.at(0, 0).available_area, 100),
         "movable macros contribute cell density");
   expect_error([&] { (void)board.cell_density(0); }, "finite and positive");
   expect_error([&] { (void)grid.at(3, 0); }, "out of bounds");

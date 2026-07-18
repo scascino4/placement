@@ -22,9 +22,9 @@
 namespace placement::parsing_detail {
 
 [[nodiscard]] inline std::string lower(std::string_view value) {
-  std::string result(value);
-  std::ranges::transform(result, result.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-  return result;
+  std::string res(value);
+  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return res;
 }
 
 [[nodiscard]] inline bool ascii_iequal(std::string_view lhs, std::string_view rhs) {
@@ -73,25 +73,25 @@ namespace placement::parsing_detail {
 
   std::uint64_t significand = 0;
   std::size_t digits = 0;
-  std::size_t fractional_digits = 0;
+  std::size_t frac_digits = 0;
   bool decimal_point = false;
-  for (const char character : token) {
-    if (character == '.' && !decimal_point) {
+  for (const char ch : token) {
+    if (ch == '.' && !decimal_point) {
       decimal_point = true;
       continue;
     }
-    if (character < '0' || character > '9' || digits == 15)
+    if (ch < '0' || ch > '9' || digits == 15)
       return std::nullopt;
 
-    significand = significand * 10 + static_cast<std::uint64_t>(character - '0');
+    significand = significand * 10 + static_cast<std::uint64_t>(ch - '0');
     ++digits;
     if (decimal_point)
-      ++fractional_digits;
+      ++frac_digits;
   }
   if (digits == 0)
     return std::nullopt;
 
-  const double value = static_cast<double>(significand) / powers_of_ten[fractional_digits];
+  const double value = static_cast<double>(significand) / powers_of_ten[frac_digits];
   return negative ? -value : value;
 }
 
@@ -181,9 +181,9 @@ public:
   [[nodiscard]] std::optional<std::uint32_t> find(std::string_view name) const {
     auto slot = initial_slot(name);
     while (slots_[slot] != EMPTY) {
-      const auto index = slots_[slot];
-      if (records_[index].name == name)
-        return index;
+      const auto idx = slots_[slot];
+      if (records_[idx].name == name)
+        return idx;
       slot = (slot + 1) & (slots_.size() - 1);
     }
     return std::nullopt;
