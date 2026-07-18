@@ -32,11 +32,6 @@ PlacedRectangle placed_rectangle(const Cell &cell) {
 
 namespace {
 
-struct Point {
-  double x{};
-  double y{};
-};
-
 void validate(const PlacedRectangle &rect);
 
 struct Bounds {
@@ -63,54 +58,12 @@ struct Bounds {
 
 [[nodiscard]] bool fixed(const Cell &cell) { return cell.location && !movable(cell); }
 
-[[nodiscard]] Point pin_position(const Cell &cell, const Pin &pin) {
-  const auto rect = placed_rectangle(cell);
-  double x = pin.offset_x;
-  double y = pin.offset_y;
-  switch (cell.location->orientation) {
-  case Orientation::N:
-    break;
-  case Orientation::E:
-    std::tie(x, y) = std::pair{y, -x};
-    break;
-  case Orientation::S:
-    x = -x;
-    y = -y;
-    break;
-  case Orientation::W:
-    std::tie(x, y) = std::pair{-y, x};
-    break;
-  case Orientation::FN:
-    x = -x;
-    break;
-  case Orientation::FE:
-    std::swap(x, y);
-    break;
-  case Orientation::FS:
-    y = -y;
-    break;
-  case Orientation::FW:
-    std::tie(x, y) = std::pair{-y, -x};
-    break;
-  }
-  return {rect.x + rect.width / 2.0 + x, rect.y + rect.height / 2.0 + y};
-}
-
 enum class Area { Movable, Placeable };
 
 void validate(const PlacedRectangle &rect) {
   if (!std::isfinite(rect.x) || !std::isfinite(rect.y) || !std::isfinite(rect.width) || !std::isfinite(rect.height) || rect.width < 0 ||
       rect.height < 0)
     throw Error("cannot calculate placement density for non-finite or negative geometry");
-}
-
-[[nodiscard]] Bounds placement_bounds(const std::vector<Row> &rows) {
-  Bounds box;
-  for (const auto &row : rows)
-    for (const auto &subrow : row.subrows)
-      box.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
-
-  return box;
 }
 
 template <typename Grid> struct GridTraits;
@@ -132,7 +85,12 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
   if (!std::isfinite(bin_size) || bin_size <= 0)
     throw Error(std::string(kind) + " bin size must be finite and positive");
 
-  const auto box = placement_bounds(rows);
+  // Establish the common placement extent for every density-grid kind.
+  Bounds box;
+  for (const auto &row : rows)
+    for (const auto &subrow : row.subrows)
+      box.include({subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+
   if (box.empty())
     throw Error("cannot calculate " + std::string(kind) + " without a non-empty placement region");
 
@@ -300,15 +258,47 @@ PinDensityGrid Board::pin_density(double bin_size) const {
     if (!cell.location)
       continue;
 
-    const auto pos = pin_position(cell, pin);
-    if (!std::isfinite(pos.x) || !std::isfinite(pos.y))
+    // Transform the cell-relative pin offset into board coordinates.
+    const auto rect = placed_rectangle(cell);
+    double x = pin.offset_x;
+    double y = pin.offset_y;
+    switch (cell.location->orientation) {
+    case Orientation::N:
+      break;
+    case Orientation::E:
+      std::tie(x, y) = std::pair{y, -x};
+      break;
+    case Orientation::S:
+      x = -x;
+      y = -y;
+      break;
+    case Orientation::W:
+      std::tie(x, y) = std::pair{-y, x};
+      break;
+    case Orientation::FN:
+      x = -x;
+      break;
+    case Orientation::FE:
+      std::swap(x, y);
+      break;
+    case Orientation::FS:
+      y = -y;
+      break;
+    case Orientation::FW:
+      std::tie(x, y) = std::pair{-y, -x};
+      break;
+    }
+    x += rect.x + rect.width / 2.0;
+    y += rect.y + rect.height / 2.0;
+
+    if (!std::isfinite(x) || !std::isfinite(y))
       throw Error("cannot calculate pin density for non-finite pin geometry");
 
-    if (pos.x < grid.min_x || pos.x > grid.max_x || pos.y < grid.min_y || pos.y > grid.max_y)
+    if (x < grid.min_x || x > grid.max_x || y < grid.min_y || y > grid.max_y)
       continue;
 
-    const auto col = pos.x == grid.max_x ? grid.columns - 1 : static_cast<std::uint64_t>((pos.x - grid.min_x) / bin_size);
-    const auto row = pos.y == grid.max_y ? grid.rows - 1 : static_cast<std::uint64_t>((pos.y - grid.min_y) / bin_size);
+    const auto col = x == grid.max_x ? grid.columns - 1 : static_cast<std::uint64_t>((x - grid.min_x) / bin_size);
+    const auto row = y == grid.max_y ? grid.rows - 1 : static_cast<std::uint64_t>((y - grid.min_y) / bin_size);
 
     ++grid.bins[static_cast<std::size_t>(row * grid.columns + col)].pin_count;
   }

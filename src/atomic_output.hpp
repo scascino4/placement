@@ -10,16 +10,14 @@
 
 namespace placement::detail {
 
-[[nodiscard]] inline std::filesystem::path temporary_path(const std::filesystem::path &out) {
-  const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-  return out.string() + ".tmp." + std::to_string(tick);
-}
-
 template <typename Write> void atomic_output(const std::filesystem::path &out, Write &&write) {
   if (!out.parent_path().empty())
     std::filesystem::create_directories(out.parent_path());
 
-  const auto tmp = temporary_path(out);
+  // Keep the temporary file beside the destination so the final rename is
+  // atomic on filesystems where crossing directories or mounts would not be.
+  const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+  const std::filesystem::path tmp = out.string() + ".tmp." + std::to_string(tick);
   try {
     std::forward<Write>(write)(tmp);
 

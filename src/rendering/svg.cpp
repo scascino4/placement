@@ -21,12 +21,6 @@
 namespace placement {
 namespace {
 
-[[nodiscard]] std::string lower(std::string_view value) {
-  std::string res(value);
-  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-  return res;
-}
-
 [[nodiscard]] std::string escape(std::string_view value) {
   std::string res;
   res.reserve(value.size());
@@ -548,7 +542,8 @@ private:
 } // namespace
 
 std::unique_ptr<Renderer> make_renderer(std::string_view format, RenderOptions opts) {
-  const auto norm = lower(format);
+  std::string norm(format);
+  std::ranges::transform(norm, norm.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   if (norm == "svg")
     return std::make_unique<SvgWriter>(opts);
   if (norm == "utilization-svg")

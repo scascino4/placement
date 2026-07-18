@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -568,28 +569,6 @@ void parse_lef(const std::filesystem::path &path, Library &library) {
   }
 }
 
-[[nodiscard]] std::pair<double, double> oriented_offset(double x, double y, Orientation value) {
-  switch (value) {
-  case Orientation::N:
-    return {x, y};
-  case Orientation::E:
-    return {y, -x};
-  case Orientation::S:
-    return {-x, -y};
-  case Orientation::W:
-    return {-y, x};
-  case Orientation::FN:
-    return {-x, y};
-  case Orientation::FE:
-    return {y, x};
-  case Orientation::FS:
-    return {x, -y};
-  case Orientation::FW:
-    return {-y, -x};
-  }
-  return {x, y};
-}
-
 struct TopPinState {
   PinDirection direction{PinDirection::Unknown};
   std::string net_name;
@@ -872,9 +851,35 @@ private:
       if (geometry.empty())
         tokens_.fail("top-level pin '" + cell.name + "' has no rectangular geometry");
       if (anchor) {
-        const auto center_x = (geometry.min_x + geometry.max_x) / 2.0;
-        const auto center_y = (geometry.min_y + geometry.max_y) / 2.0;
-        const auto [dx, dy] = oriented_offset(center_x, center_y, anchor->orientation);
+        // Rotate the pin-shape center around its DEF placement anchor.
+        double dx = (geometry.min_x + geometry.max_x) / 2.0;
+        double dy = (geometry.min_y + geometry.max_y) / 2.0;
+        switch (anchor->orientation) {
+        case Orientation::N:
+          break;
+        case Orientation::E:
+          std::tie(dx, dy) = std::pair{dy, -dx};
+          break;
+        case Orientation::S:
+          dx = -dx;
+          dy = -dy;
+          break;
+        case Orientation::W:
+          std::tie(dx, dy) = std::pair{-dy, dx};
+          break;
+        case Orientation::FN:
+          dx = -dx;
+          break;
+        case Orientation::FE:
+          std::swap(dx, dy);
+          break;
+        case Orientation::FS:
+          dy = -dy;
+          break;
+        case Orientation::FW:
+          std::tie(dx, dy) = std::pair{-dy, -dx};
+          break;
+        }
         anchor->x += dx;
         anchor->y += dy;
         anchor->orientation = Orientation::N;

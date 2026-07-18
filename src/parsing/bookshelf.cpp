@@ -433,24 +433,6 @@ void parse_rows(const std::filesystem::path &path, Board &board) {
     records.fail("NumRows does not match row records");
 }
 
-[[nodiscard]] std::optional<std::pair<double, double>> parse_dims(std::string_view field, const Records &records) {
-  const auto equal = field.find('=');
-  if (equal == std::string_view::npos || lower(field.substr(0, equal)) != "dims")
-    return std::nullopt;
-
-  auto value = field.substr(equal + 1);
-  if (!value.empty() && value.front() == '(')
-    value.remove_prefix(1);
-  if (!value.empty() && value.back() == ')')
-    value.remove_suffix(1);
-
-  const auto comma = value.find(',');
-  if (comma == std::string_view::npos)
-    records.fail("DIMS requires DIMS=(width,height)");
-
-  return std::pair{number<double>(value.substr(0, comma), records, "DIMS width"), number<double>(value.substr(comma + 1), records, "DIMS height")};
-}
-
 void parse_placement(const std::filesystem::path &path, Board &board, const CellIndex &cell_idx) {
   Records records(path);
   require_header(records, "pl");
@@ -485,10 +467,25 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
         location.status = PlacementStatus::Fixed;
       else if (ascii_iequal(field, "fixed_ni"))
         location.status = PlacementStatus::FixedNonInteracting;
-      else if (const auto dims = parse_dims(field, records)) {
-        location.width = dims->first;
-        location.height = dims->second;
-      } else {
+      else {
+        // DIMS is the only key/value placement option; all other fields here
+        // are orientation spellings.
+        const auto equal = field.find('=');
+        if (equal != std::string_view::npos && ascii_iequal(field.substr(0, equal), "dims")) {
+          auto value = field.substr(equal + 1);
+          if (!value.empty() && value.front() == '(')
+            value.remove_prefix(1);
+          if (!value.empty() && value.back() == ')')
+            value.remove_suffix(1);
+
+          const auto comma = value.find(',');
+          if (comma == std::string_view::npos)
+            records.fail("DIMS requires DIMS=(width,height)");
+
+          location.width = number<double>(value.substr(0, comma), records, "DIMS width");
+          location.height = number<double>(value.substr(comma + 1), records, "DIMS height");
+          continue;
+        }
         location.orientation = orientation(field, records);
       }
     }

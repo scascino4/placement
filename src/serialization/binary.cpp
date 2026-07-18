@@ -30,12 +30,6 @@ public:
   [[nodiscard]] Board read(const std::filesystem::path &in) const override;
 };
 
-[[nodiscard]] std::string lower(std::string_view value) {
-  std::string res(value);
-  std::ranges::transform(res, res.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-  return res;
-}
-
 // These small wrappers keep byte order and bounds checks in one place. The
 // format is explicitly little-endian, independent of the host architecture.
 class Output {
@@ -394,7 +388,9 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
 }
 
 std::unique_ptr<Serializer> make_serializer(std::string_view format) {
-  if (lower(format) == "binary")
+  std::string norm(format);
+  std::ranges::transform(norm, norm.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  if (norm == "binary")
     return std::make_unique<BinarySerializer>();
   throw Error("unsupported serialization format '" + std::string(format) + "'");
 }

@@ -22,18 +22,6 @@ void usage(std::ostream &out) {
          "[--serialization-format binary] <input> <output>\n";
 }
 
-[[nodiscard]] InputFormat parse_input_format(std::string_view value) {
-  std::string norm(value);
-  for (auto &ch : norm)
-    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-
-  if (norm == "bookshelf")
-    return InputFormat::Bookshelf;
-  if (norm == "lefdef" || norm == "lef/def")
-    return InputFormat::LefDef;
-  throw placement::Error("unsupported input format '" + std::string(value) + "'");
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -73,8 +61,21 @@ int main(int argc, char **argv) {
     const std::filesystem::path in(argv[arg]);
     const std::filesystem::path out(argv[arg + 1]);
 
+    // Normalize and select the input backend at the only decision point.
+    std::string norm(in_fmt);
+    for (auto &ch : norm)
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+
+    InputFormat fmt;
+    if (norm == "bookshelf")
+      fmt = InputFormat::Bookshelf;
+    else if (norm == "lefdef" || norm == "lef/def")
+      fmt = InputFormat::LefDef;
+    else
+      throw placement::Error("unsupported input format '" + in_fmt + "'");
+
     std::unique_ptr<placement::Parser> parser;
-    switch (parse_input_format(in_fmt)) {
+    switch (fmt) {
     case InputFormat::Bookshelf:
       if (!lefs.empty())
         throw placement::Error("--lef-file is only valid with --input-format lefdef");
