@@ -4,9 +4,10 @@
 
 namespace placement::test {
 
-[[nodiscard]] Tests parsing_tests();
+[[nodiscard]] Tests bookshelf_tests();
+[[nodiscard]] Tests lefdef_tests();
 [[nodiscard]] Tests model_tests();
-[[nodiscard]] Tests serialization_tests();
-[[nodiscard]] Tests rendering_tests();
+[[nodiscard]] Tests binary_tests();
+[[nodiscard]] Tests svg_tests();
 
 } // namespace placement::test

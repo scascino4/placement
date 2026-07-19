@@ -120,6 +120,6 @@ void svg_test() {
 
 } // namespace
 
-Tests rendering_tests() { return {{"SVG renderers", svg_test}}; }
+Tests svg_tests() { return {{"SVG renderers", svg_test}}; }
 
 } // namespace placement::test

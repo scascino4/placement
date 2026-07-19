@@ -55,6 +55,6 @@ void binary_test() {
 
 } // namespace
 
-Tests serialization_tests() { return {{"binary round trip and corruption", binary_test}}; }
+Tests binary_tests() { return {{"binary round trip and corruption", binary_test}}; }
 
 } // namespace placement::test

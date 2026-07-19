@@ -6,8 +6,8 @@
 
 int main() {
   placement::test::Tests tests;
-  for (auto suite :
-       {placement::test::parsing_tests(), placement::test::model_tests(), placement::test::serialization_tests(), placement::test::rendering_tests()})
+  for (auto suite : {placement::test::bookshelf_tests(), placement::test::lefdef_tests(), placement::test::model_tests(),
+                     placement::test::binary_tests(), placement::test::svg_tests()})
     tests.insert(tests.end(), std::make_move_iterator(suite.begin()), std::make_move_iterator(suite.end()));
 
   std::size_t passed = 0;
