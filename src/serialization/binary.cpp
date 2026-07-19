@@ -11,7 +11,6 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
-#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -22,7 +21,23 @@ constexpr std::array<char, 8> MAGIC{'P', 'L', 'A', 'C', 'E', 'B', 'I', 'N'};
 constexpr std::uint64_t MAX_RECORDS = 1'000'000'000;
 constexpr std::uint32_t MAX_STRING = 64 * 1024 * 1024;
 constexpr std::uint32_t MAX_WEIGHTS = 1'000'000;
-constexpr std::size_t IO_BUFFER_SIZE = 256 * 1024;
+constexpr std::size_t IO_BUF_SIZE = 256 * 1024;
+
+// Min encoded sizes omit variable-length contents and optional fields.
+// Expressing them in terms of their wire fields keeps the count guards aligned
+// with the read and write routines below.
+constexpr std::uint64_t STRING_LENGTH_BYTES = sizeof(std::uint32_t);
+constexpr std::uint64_t WEIGHT_COUNT_BYTES = sizeof(std::uint32_t);
+constexpr std::uint64_t RECORD_COUNT_BYTES = sizeof(std::uint64_t);
+constexpr std::uint64_t REAL_BYTES = sizeof(std::uint64_t);
+constexpr std::uint64_t BOOLEAN_BYTES = sizeof(std::uint8_t);
+constexpr std::uint64_t ENUM_BYTES = sizeof(std::uint8_t);
+constexpr std::uint64_t SYMMETRY_BYTES = sizeof(std::uint8_t);
+constexpr std::uint64_t MIN_CELL_BYTES = STRING_LENGTH_BYTES + 2 * REAL_BYTES + ENUM_BYTES + 2 * BOOLEAN_BYTES + WEIGHT_COUNT_BYTES;
+constexpr std::uint64_t MIN_ROW_BYTES = 4 * REAL_BYTES + ENUM_BYTES + SYMMETRY_BYTES + RECORD_COUNT_BYTES;
+constexpr std::uint64_t MIN_NET_BYTES = STRING_LENGTH_BYTES + 2 * RECORD_COUNT_BYTES + WEIGHT_COUNT_BYTES;
+constexpr std::uint64_t MIN_PIN_BYTES = sizeof(std::uint32_t) + ENUM_BYTES + 2 * REAL_BYTES;
+constexpr std::uint64_t MIN_SUBROW_BYTES = REAL_BYTES + RECORD_COUNT_BYTES;
 
 class BinarySerializer final : public Serializer {
 public:
@@ -43,11 +58,11 @@ public:
   void bytes(const void *data, std::size_t size) {
     auto *src = static_cast<const char *>(data);
     while (size != 0) {
-      if (used_ == buffer_.size())
-        flush_buffer();
+      if (used_ == buf_.size())
+        flush_buf();
 
-      const auto count = std::min(size, buffer_.size() - used_);
-      std::memcpy(buffer_.data() + used_, src, count);
+      const auto count = std::min(size, buf_.size() - used_);
+      std::memcpy(buf_.data() + used_, src, count);
       used_ += count;
       src += count;
       size -= count;
@@ -55,11 +70,11 @@ public:
   }
 
   template <std::unsigned_integral T> void integer(T value) {
-    if (buffer_.size() - used_ < sizeof(T))
-      flush_buffer();
+    if (buf_.size() - used_ < sizeof(T))
+      flush_buf();
 
     for (std::size_t i = 0; i < sizeof(T); ++i)
-      buffer_[used_++] = static_cast<char>(static_cast<std::uint8_t>(value >> (i * 8)));
+      buf_[used_++] = static_cast<char>(static_cast<std::uint8_t>(value >> (i * 8)));
   }
 
   void real(double value) { integer(std::bit_cast<std::uint64_t>(value)); }
@@ -84,24 +99,24 @@ public:
   }
 
   void finish() {
-    flush_buffer();
+    flush_buf();
     stream_.flush();
     if (!stream_)
       throw Error("failed while finalizing binary placement");
   }
 
 private:
-  void flush_buffer() {
+  void flush_buf() {
     if (used_ == 0)
       return;
 
-    stream_.write(buffer_.data(), static_cast<std::streamsize>(used_));
+    stream_.write(buf_.data(), static_cast<std::streamsize>(used_));
     if (!stream_)
       throw Error("failed while writing binary placement");
     used_ = 0;
   }
 
-  std::array<char, IO_BUFFER_SIZE> buffer_{};
+  std::array<char, IO_BUF_SIZE> buf_{};
   std::size_t used_{};
   std::ofstream stream_;
 };
@@ -112,6 +127,15 @@ public:
     stream_.open(path, std::ios::binary);
     if (!stream_)
       throw Error("cannot open " + path.string());
+
+    stream_.seekg(0, std::ios::end);
+    const auto end = stream_.tellg();
+    if (end < 0)
+      throw Error("cannot determine size of " + path.string());
+    total_size_ = static_cast<std::uint64_t>(end);
+    stream_.seekg(0, std::ios::beg);
+    if (!stream_)
+      throw Error("cannot read " + path.string());
   }
 
   void bytes(void *data, std::size_t size) {
@@ -121,10 +145,11 @@ public:
         refill(1);
 
       const auto count = std::min(size, avail_ - pos_);
-      std::memcpy(dst, buffer_.data() + pos_, count);
+      std::memcpy(dst, buf_.data() + pos_, count);
       pos_ += count;
       dst += count;
       size -= count;
+      consumed_ += count;
     }
   }
 
@@ -134,7 +159,8 @@ public:
 
     std::uint64_t value{};
     for (std::size_t i = 0; i < sizeof(T); ++i)
-      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buffer_[pos_++])) << (i * 8);
+      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buf_[pos_++])) << (i * 8);
+    consumed_ += sizeof(T);
     return static_cast<T>(value);
   }
 
@@ -144,6 +170,8 @@ public:
     const auto size = integer<std::uint32_t>();
     if (size > MAX_STRING)
       throw Error(path_.string() + ": invalid string length");
+    if (size > remaining_bytes())
+      throw Error(path_.string() + ": truncated binary placement");
 
     std::string value(size, '\0');
     bytes(value.data(), value.size());
@@ -154,6 +182,8 @@ public:
     const auto size = integer<std::uint32_t>();
     if (size > MAX_WEIGHTS)
       throw Error(path_.string() + ": invalid weight count");
+    if (size > remaining_bytes() / sizeof(double))
+      throw Error(path_.string() + ": truncated binary placement");
 
     std::vector<double> values(size);
     for (auto &value : values)
@@ -189,14 +219,15 @@ public:
   }
 
   [[nodiscard]] const std::filesystem::path &path() const { return path_; }
+  [[nodiscard]] std::uint64_t remaining_bytes() const { return consumed_ <= total_size_ ? total_size_ - consumed_ : 0; }
 
 private:
   void refill(std::size_t required) {
     const auto left = avail_ - pos_;
     if (left != 0)
-      std::memmove(buffer_.data(), buffer_.data() + pos_, left);
+      std::memmove(buf_.data(), buf_.data() + pos_, left);
 
-    stream_.read(buffer_.data() + left, static_cast<std::streamsize>(buffer_.size() - left));
+    stream_.read(buf_.data() + left, static_cast<std::streamsize>(buf_.size() - left));
     const auto read = stream_.gcount();
     pos_ = 0;
     avail_ = left + static_cast<std::size_t>(read);
@@ -205,15 +236,22 @@ private:
   }
 
   std::filesystem::path path_;
-  std::array<char, IO_BUFFER_SIZE> buffer_{};
+  std::array<char, IO_BUF_SIZE> buf_{};
   std::size_t pos_{};
   std::size_t avail_{};
+  std::uint64_t total_size_{};
+  std::uint64_t consumed_{};
   std::ifstream stream_;
 };
 
-void check_count(std::uint64_t count, const Input &in, std::string_view name) {
+[[nodiscard]] std::uint64_t checked_min_bytes(std::uint64_t count, const Input &in, std::string_view name, std::uint64_t min_record_bytes,
+                                              std::uint64_t prior_min_bytes = 0) {
   if (count > MAX_RECORDS)
     throw Error(in.path().string() + ": invalid " + std::string(name) + " count");
+  const auto remaining = in.remaining_bytes();
+  if (prior_min_bytes > remaining || count > (remaining - prior_min_bytes) / min_record_bytes)
+    throw Error(in.path().string() + ": impossible " + std::string(name) + " count for remaining binary data");
+  return prior_min_bytes + count * min_record_bytes;
 }
 
 } // namespace
@@ -298,10 +336,10 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
   const auto net_count = reader.integer<std::uint64_t>();
   const auto pin_count = reader.integer<std::uint64_t>();
 
-  check_count(cell_count, reader, "cell");
-  check_count(row_count, reader, "row");
-  check_count(net_count, reader, "net");
-  check_count(pin_count, reader, "pin");
+  auto min_payload_bytes = checked_min_bytes(cell_count, reader, "cell", MIN_CELL_BYTES);
+  min_payload_bytes = checked_min_bytes(row_count, reader, "row", MIN_ROW_BYTES, min_payload_bytes);
+  min_payload_bytes = checked_min_bytes(net_count, reader, "net", MIN_NET_BYTES, min_payload_bytes);
+  (void)checked_min_bytes(pin_count, reader, "pin", MIN_PIN_BYTES, min_payload_bytes);
 
   board.cells.reserve(static_cast<std::size_t>(cell_count));
   board.rows.reserve(static_cast<std::size_t>(row_count));
@@ -348,7 +386,7 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
       throw Error(in.string() + ": invalid row symmetry");
 
     const auto subrow_count = reader.integer<std::uint64_t>();
-    check_count(subrow_count, reader, "subrow");
+    (void)checked_min_bytes(subrow_count, reader, "subrow", MIN_SUBROW_BYTES);
     row.subrows.reserve(static_cast<std::size_t>(subrow_count));
 
     for (std::uint64_t subrow = 0; subrow < subrow_count; ++subrow)

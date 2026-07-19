@@ -63,7 +63,14 @@ public:
       if (comment != std::string::npos)
         record.line_.erase(comment);
 
-      if (record.line_.find_first_not_of(" \t\r\n") != std::string::npos)
+      bool has_field = false;
+      for (const char ch : record.line_) {
+        if (static_cast<unsigned char>(ch) > static_cast<unsigned char>(' ')) {
+          has_field = true;
+          break;
+        }
+      }
+      if (has_field)
         return true;
     }
 

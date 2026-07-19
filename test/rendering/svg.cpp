@@ -12,7 +12,7 @@ void svg_test() {
   const auto &dark = rendering_style::dark_mode_palette;
   check(&rendering_style::palette(false) == &style && &rendering_style::palette(true) == &dark, "rendering mode selects the common palette");
 
-  TemporaryDirectory tmp;
+  TempDir tmp;
   bookshelf_fixture(tmp.path());
   auto board = parse_bookshelf_fixture(tmp.path());
   const auto serializer = make_serializer("binary");

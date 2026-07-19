@@ -27,11 +27,29 @@ FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
 	src/*.cpp src/*.hpp \
 	src/*/*.cpp src/*/*.hpp \
 	test/*.cpp test/*.hpp \
-	test/*/*.cpp test/*/*.hpp)
+	test/*/*.cpp test/*/*.hpp \
+	fuzz/*.cpp fuzz/*.hpp \
+	fuzz/*/*.cpp fuzz/*/*.hpp)
 
 PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
 TEST_BIN := $(BIN_DIR)/placement_tests
+FUZZ_BUILD_DIR := $(BUILD_DIR)/fuzz
+FUZZ_OBJ_DIR := $(FUZZ_BUILD_DIR)/obj
+FUZZ_TARGETS := bookshelf lefdef binary model svg
+FUZZ_BINS := $(addprefix $(FUZZ_BUILD_DIR)/placement_fuzz_,$(FUZZ_TARGETS))
+FUZZ_SOURCES := $(PARSING_SOURCES) $(RENDERING_SOURCES) \
+	$(SERIALIZATION_SOURCES) $(MODEL_SOURCES) $(wildcard fuzz/*.cpp fuzz/*/*.cpp)
+FUZZ_OBJECTS := $(patsubst %.cpp,$(FUZZ_OBJ_DIR)/%.o,$(FUZZ_SOURCES))
+FUZZ_COMMON_OBJECTS := $(FUZZ_OBJ_DIR)/fuzz/fuzz_main.o \
+	$(FUZZ_OBJ_DIR)/fuzz/support.o
+FUZZ_CXXFLAGS ?= -O1 -g -fno-omit-frame-pointer \
+	-fsanitize=fuzzer,address,undefined
+FUZZ_CRASH_DIR := fuzz/crashes
+FUZZ_SECONDS ?= 60
+FUZZ_MAX_LEN ?= 4096
+FUZZ_TIMEOUT ?= 5
+FUZZ_RSS_LIMIT_MB ?= 1024
 
 ISPD2005_OUTPUT_AUX_FILES := $(wildcard data/ispd2005/*/*.dp.aux)
 ISPD2005_OUTPUT_DESIGNS := $(notdir $(patsubst %/,%,$(dir \
@@ -66,7 +84,7 @@ ISPD2015_DREAMPLACE_DESIGNS := $(patsubst %.gp.def,%,$(notdir \
 ISPD2015_DREAMPLACE_OUTPUT_TARGETS := $(addprefix ispd2015-dreamplace-output-, \
 	$(ISPD2015_DREAMPLACE_DESIGNS))
 
-.PHONY: all test valgrind check-data outputs $(ISPD2005_OUTPUT_TARGETS) \
+.PHONY: all test fuzz fuzz-run valgrind check-data outputs $(ISPD2005_OUTPUT_TARGETS) \
 	$(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2005FREE_OUTPUT_TARGETS) \
 	$(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS) \
 	$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS) \
@@ -97,6 +115,53 @@ $(BIN_DIR):
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
+
+$(FUZZ_OBJ_DIR)/%.o: %.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $(DEPFLAGS) -c $< -o $@
+
+$(FUZZ_BUILD_DIR)/placement_fuzz_bookshelf: $(FUZZ_COMMON_OBJECTS) \
+		$(FUZZ_OBJ_DIR)/fuzz/parsing/bookshelf.o \
+		$(FUZZ_OBJ_DIR)/src/parsing/bookshelf.o | $(FUZZ_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $^ -o $@
+
+$(FUZZ_BUILD_DIR)/placement_fuzz_lefdef: $(FUZZ_COMMON_OBJECTS) \
+		$(FUZZ_OBJ_DIR)/fuzz/parsing/lefdef.o \
+		$(FUZZ_OBJ_DIR)/src/parsing/lefdef.o \
+		$(FUZZ_OBJ_DIR)/src/model.o | $(FUZZ_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $^ -o $@
+
+$(FUZZ_BUILD_DIR)/placement_fuzz_binary: $(FUZZ_COMMON_OBJECTS) \
+		$(FUZZ_OBJ_DIR)/fuzz/serialization/binary.o \
+		$(FUZZ_OBJ_DIR)/src/serialization/binary.o | $(FUZZ_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $^ -o $@
+
+$(FUZZ_BUILD_DIR)/placement_fuzz_model: $(FUZZ_COMMON_OBJECTS) \
+		$(FUZZ_OBJ_DIR)/fuzz/model.o $(FUZZ_OBJ_DIR)/src/model.o | $(FUZZ_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $^ -o $@
+
+$(FUZZ_BUILD_DIR)/placement_fuzz_svg: $(FUZZ_COMMON_OBJECTS) \
+		$(FUZZ_OBJ_DIR)/fuzz/rendering/svg.o \
+		$(FUZZ_OBJ_DIR)/src/rendering/svg.o $(FUZZ_OBJ_DIR)/src/model.o | $(FUZZ_BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(FUZZ_CXXFLAGS) $^ -o $@
+
+$(FUZZ_BUILD_DIR):
+	mkdir -p $@
+
+fuzz: $(FUZZ_BINS)
+
+fuzz-run: $(FUZZ_BINS)
+	@set -e; for target in $(FUZZ_TARGETS); do \
+		corpus="fuzz/corpora/$$target"; crashes="$(FUZZ_CRASH_DIR)"; \
+		mkdir -p "$$corpus" "$$crashes"; \
+		echo "Fuzzing $$target"; \
+		"$(FUZZ_BUILD_DIR)/placement_fuzz_$$target" \
+			-max_total_time=$(FUZZ_SECONDS) -max_len=$(FUZZ_MAX_LEN) \
+			-timeout=$(FUZZ_TIMEOUT) -rss_limit_mb=$(FUZZ_RSS_LIMIT_MB) \
+			-print_funcs=0 \
+			-artifact_prefix="$$crashes/" \
+			"$$corpus" fuzz/corpus; \
+	done
 
 valgrind:
 	+VALGRIND_BUILD_DIR="$(VALGRIND_BUILD_DIR)" \
@@ -257,4 +322,4 @@ clean-outputs:
 
 -include $(PARSING_OBJECTS:.o=.d) $(RENDERING_OBJECTS:.o=.d) \
 	$(SERIALIZATION_OBJECTS:.o=.d) $(MODEL_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
-	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECTS:.o=.d)
+	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECTS:.o=.d) $(FUZZ_OBJECTS:.o=.d)

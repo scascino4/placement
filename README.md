@@ -152,8 +152,8 @@ writes all four views under `out/ispd2015`. It discovers matching
 `data/ispd2015-dreamplace/<design>.gp.def` files and writes their four views
 under `out/ispd2015-dreamplace/<design>`.
 
-Useful maintenance targets are `make valgrind`, `make clean`, and
-`make clean-outputs`.
+Useful maintenance targets are `make valgrind`, `make fuzz-run`, `make clean`,
+and `make clean-outputs`.
 
 ## Project layout
 
@@ -164,5 +164,6 @@ src/serialization/   Binary serializer
 src/rendering/       Placement and density SVG renderers
 src/apps/            Thin command-line applications
 test/                Component test suites and shared synthetic fixtures
+fuzz/                libFuzzer component targets and corpus
 scripts/             Benchmark download and optional DREAMPlace preparation
 ```

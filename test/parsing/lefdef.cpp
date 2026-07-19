@@ -6,7 +6,7 @@ namespace placement::test {
 namespace {
 
 void lefdef_parser_test() {
-  TemporaryDirectory tmp;
+  TempDir tmp;
   lefdef_fixture(tmp.path());
   const auto board = parse_lefdef_fixture(tmp.path());
   check(board.name == "tiny_def", "LEF/DEF design name");
@@ -29,7 +29,7 @@ void lefdef_parser_test() {
 }
 
 void malformed_lefdef_test() {
-  TemporaryDirectory tmp;
+  TempDir tmp;
   lefdef_fixture(tmp.path());
   auto text = read(tmp.path() / "design.def");
   auto pos = text.find("u1 NAND");

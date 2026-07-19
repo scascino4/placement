@@ -18,12 +18,12 @@ namespace placement::test {
 using Test = std::pair<std::string_view, std::function<void()>>;
 using Tests = std::vector<Test>;
 
-class TemporaryDirectory {
+class TempDir {
 public:
-  TemporaryDirectory();
-  ~TemporaryDirectory();
-  TemporaryDirectory(const TemporaryDirectory &) = delete;
-  TemporaryDirectory &operator=(const TemporaryDirectory &) = delete;
+  TempDir();
+  ~TempDir();
+  TempDir(const TempDir &) = delete;
+  TempDir &operator=(const TempDir &) = delete;
 
   [[nodiscard]] const std::filesystem::path &path() const { return path_; }
 
@@ -47,9 +47,9 @@ inline void check(bool condition, std::string_view message) {
 
 [[nodiscard]] inline bool close(double a, double b) { return std::abs(a - b) < 1e-12; }
 
-template <typename Function> void expect_error(Function &&function, std::string_view fragment) {
+template <typename Fn> void expect_error(Fn &&fn, std::string_view fragment) {
   try {
-    function();
+    fn();
   } catch (const Error &error) {
     check(std::string_view(error.what()).find(fragment) != std::string_view::npos, "error did not contain expected diagnostic");
     return;

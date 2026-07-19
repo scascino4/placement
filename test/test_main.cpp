@@ -4,14 +4,6 @@
 #include <iostream>
 #include <iterator>
 
-namespace {
-
-constexpr auto green = "\033[32m";
-constexpr auto red = "\033[31m";
-constexpr auto reset = "\033[0m";
-
-}  // namespace
-
 int main() {
   placement::test::Tests tests;
   for (auto suite : {placement::test::bookshelf_tests(), placement::test::lefdef_tests(), placement::test::model_tests(),
@@ -23,9 +15,9 @@ int main() {
     try {
       test();
       ++passed;
-      std::cout << green << "[PASS]" << reset << ' ' << name << '\n';
+      std::cout << "[PASS] " << name << '\n';
     } catch (const std::exception &error) {
-      std::cerr << red << "[FAIL]" << reset << ' ' << name << ": " << error.what() << '\n';
+      std::cerr << "[FAIL] " << name << ": " << error.what() << '\n';
     }
   }
   std::cout << passed << '/' << tests.size() << " tests passed\n";

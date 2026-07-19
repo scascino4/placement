@@ -8,13 +8,13 @@
 
 namespace placement::test {
 
-TemporaryDirectory::TemporaryDirectory() {
+TempDir::TempDir() {
   const auto id = std::chrono::steady_clock::now().time_since_epoch().count();
   path_ = std::filesystem::temp_directory_path() / ("placement-tests-" + std::to_string(id));
   std::filesystem::create_directories(path_);
 }
 
-TemporaryDirectory::~TemporaryDirectory() {
+TempDir::~TempDir() {
   std::error_code ignored;
   std::filesystem::remove_all(path_, ignored);
 }

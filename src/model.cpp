@@ -111,7 +111,7 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
   return grid;
 }
 
-template <typename Grid, typename Function> void for_each_bin(Grid &grid, Function fn) {
+template <typename Grid, typename Fn> void for_each_bin(Grid &grid, Fn fn) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto height = std::min(grid.bin_size, grid.max_y - (grid.min_y + static_cast<double>(row) * grid.bin_size));
     for (std::uint64_t col = 0; col < grid.columns; ++col) {

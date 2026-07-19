@@ -6,7 +6,7 @@ namespace placement::test {
 namespace {
 
 void bookshelf_parser_test() {
-  TemporaryDirectory tmp;
+  TempDir tmp;
   bookshelf_fixture(tmp.path());
   const auto board = parse_bookshelf_fixture(tmp.path());
   check(board.name == "tiny", "design name");
@@ -28,7 +28,7 @@ void bookshelf_parser_test() {
 }
 
 void malformed_bookshelf_test() {
-  TemporaryDirectory tmp;
+  TempDir tmp;
   bookshelf_fixture(tmp.path());
   write(tmp.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 1\nNumPins : 1\n"
                                   "NetDegree : 1 broken\nmissing I : 0 0\n");
@@ -45,8 +45,20 @@ void malformed_bookshelf_test() {
   expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate net name 'duplicate'");
 }
 
+void bookshelf_control_byte_blank_line_test() {
+  TempDir tmp;
+  bookshelf_fixture(tmp.path());
+  std::string contents = "UCLA nodes 1.0\nNumNodes : 4\n";
+  contents.append(2, '\0');
+  contents += "\nNumTerminals : 2\na 2 4\nb 6 3 terminal\nc 5 2 terminal_NI\nd 1.5 2.5e0\n";
+  write(tmp.path() / "tiny.nodes", std::string_view(contents.data(), contents.size()));
+
+  const auto board = parse_bookshelf_fixture(tmp.path());
+  check(board.cells.size() == 4, "control-byte blank line is ignored");
+}
+
 void placement_override_test() {
-  TemporaryDirectory tmp;
+  TempDir tmp;
   bookshelf_fixture(tmp.path());
   const auto override = tmp.path() / "dreamplace.pl";
   write(override, "UCLA pl 1.0\na 101 202 : S\nb 303 404 : N\n");
@@ -69,6 +81,7 @@ void placement_override_test() {
 Tests bookshelf_tests() {
   return {{"Bookshelf parser", bookshelf_parser_test},
           {"Bookshelf parser diagnostics", malformed_bookshelf_test},
+          {"Bookshelf parser control-byte blank line", bookshelf_control_byte_blank_line_test},
           {"placement override", placement_override_test}};
 }
 

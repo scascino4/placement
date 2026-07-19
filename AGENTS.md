@@ -13,7 +13,14 @@ or the command-line applications.
 - `make`: build `build/bin/placement_parse` and
   `build/bin/placement_render`.
 - `make test`: build and run the standard-library-only unit tests.
-- `make format`: format production and test C++ sources with `clang-format`.
+- `make format`: format production, test, and fuzz C++ sources with
+  `clang-format`.
+- `make fuzz`: build the Bookshelf, LEF/DEF, binary, model, and SVG libFuzzer
+  targets with AddressSanitizer and UndefinedBehaviorSanitizer.
+- `make fuzz-run`: build and run all five fuzz targets. Per-target corpora are
+  retained under `fuzz/corpora`, and failures are written under `fuzz/crashes`.
+  Runtime and resource limits can be overridden with the `FUZZ_*` Make
+  variables defined in `Makefile`.
 - `make valgrind`: build debug-symbol variants in `build/valgrind` and run
   parsing and SVG rendering for `adaptec1` under Valgrind Memcheck.
 - `make outputs`: parse all eight legalized `data/ispd2005/*/*.dp.aux`
@@ -35,6 +42,9 @@ representative Bookshelf and LEF/DEF SVG previews for clipping, inversion, or
 implausible geometry. For changes that affect memory ownership, allocation, or
 large-data processing, also run the opt-in `make valgrind` smoke test when
 Valgrind is available.
+For changes to fuzz targets or input-validation behavior, build the fuzzers and
+run an appropriately bounded `make fuzz-run` smoke test when Clang's libFuzzer
+runtime is available.
 
 ## Code organization and conventions
 
@@ -50,7 +60,13 @@ Valgrind is available.
 - Tests are split by component under `test/parsing`, `test/model`,
   `test/serialization`, and `test/rendering`; shared synthetic fixtures and
   assertions are in `test/support.cpp` and `test/support.hpp`.
+- `fuzz` mirrors the component layout where useful; common deterministic input
+  generation and file helpers are in `fuzz/support.cpp` and `fuzz/support.hpp`.
 - Keep production code and tests limited to the C++23 standard library.
+- Prefer the established concise names: `min`/`max`, `dir`/`tmp`, `buf`,
+  `opts`, and `res`; use `i` for simple loop counters and `idx` for indices
+  referenced beyond the loop increment. Avoid mixing abbreviated and expanded
+  forms within a component.
 - Follow `.clang-format`, retain path-and-line text-parser diagnostics, validate
   all declared counts and references, and use atomic temporary-file output.
 - Keep backend-specific options typed: Bookshelf accepts an optional placement
@@ -65,6 +81,8 @@ Valgrind is available.
   overhead, retain flattened net-to-pin ranges, and avoid expanding SVG
   connectivity.
 
-`data/`, `build/`, and `out/` are local/generated and ignored by Git. Do not
-modify benchmark inputs or commit generated binaries/SVGs. The binary format is
+`data/`, `build/`, `out/`, `fuzz/corpora/`, and `fuzz/crashes/` are
+local/generated and ignored by Git. Do not modify benchmark inputs or commit
+generated binaries/SVGs or fuzzing artifacts. The shared seed inputs under
+`fuzz/corpus/` are source files and should remain tracked. The binary format is
 documented in `README.md`.

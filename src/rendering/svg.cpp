@@ -117,7 +117,7 @@ public:
   }
 
   void finish() {
-    flush_buffer();
+    flush_buf();
     if (file_.pubsync() != 0)
       throw Error("failed while writing SVG");
   }
@@ -125,28 +125,28 @@ public:
 private:
   void write(const char *data, std::size_t size) {
     while (size != 0) {
-      if (used_ == buffer_.size())
-        flush_buffer();
+      if (used_ == buf_.size())
+        flush_buf();
 
-      const auto count = std::min(size, buffer_.size() - used_);
-      std::memcpy(buffer_.data() + used_, data, count);
+      const auto count = std::min(size, buf_.size() - used_);
+      std::memcpy(buf_.data() + used_, data, count);
       used_ += count;
       data += count;
       size -= count;
     }
   }
 
-  void flush_buffer() {
+  void flush_buf() {
     if (used_ == 0)
       return;
-    if (file_.sputn(buffer_.data(), static_cast<std::streamsize>(used_)) != static_cast<std::streamsize>(used_))
+    if (file_.sputn(buf_.data(), static_cast<std::streamsize>(used_)) != static_cast<std::streamsize>(used_))
       throw Error("failed while writing SVG");
     used_ = 0;
   }
 
   // A larger fixed buffer avoids both a heap allocation and thousands of
   // small writes for SVGs containing millions of rectangles.
-  std::array<char, 256 * 1024> buffer_{};
+  std::array<char, 256 * 1024> buf_{};
   std::size_t used_{};
   std::filebuf file_;
 };
@@ -355,7 +355,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   return {core, viewport, width, height, opts.bin_size.value_or(core_span / 100.0), view_span * 0.01, view_span / 8000.0};
 }
 
-template <typename Grid, typename Function> void write_grid_bins(SvgOutput &out, const Grid &grid, Function write_bin) {
+template <typename Grid, typename Fn> void write_grid_bins(SvgOutput &out, const Grid &grid, Fn write_bin) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
     const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
     const auto height = std::min(grid.bin_size, grid.max_y - y);
