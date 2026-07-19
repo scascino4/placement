@@ -61,6 +61,8 @@ void include_geometry(Bounds &bounds, const PlacedRectangle &rect) {
 enum class CellClass { Movable, Macro, Fixed, FixedNonInteracting };
 
 [[nodiscard]] CellClass cell_class(const Cell &cell) {
+  // Macro presentation takes precedence over placement status so a movable
+  // physical macro remains visually distinguishable from standard cells.
   if (cell.macro)
     return CellClass::Macro;
   if (cell.kind == CellKind::TerminalNonInteracting || cell.location->status == PlacementStatus::FixedNonInteracting)
@@ -334,6 +336,8 @@ template <typename Grid> struct DensityLayout {
 };
 
 template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const Board &board, const RenderOptions &opts) {
+  // Grids cover only the row-defined core, but the viewport also includes
+  // placed objects outside it so overlays are not clipped.
   Bounds core;
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
@@ -457,6 +461,8 @@ public:
 
     std::sort(densities.begin(), densities.end());
 
+    // A percentile ceiling prevents a handful of pin hot spots from washing
+    // out useful differences across the rest of the heatmap.
     double ceiling = 1.0;
     if (!densities.empty()) {
       const auto idx = static_cast<std::size_t>(std::ceil(0.95 * static_cast<double>(densities.size()))) - 1;

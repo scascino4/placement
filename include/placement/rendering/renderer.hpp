@@ -12,6 +12,8 @@ namespace placement {
 class Renderer {
 public:
   virtual ~Renderer() = default;
+  // Renderers consume Board only; they must not depend on the input backend
+  // that originally produced it.
   virtual void render(const Board &board, const std::filesystem::path &out) const = 0;
 };
 

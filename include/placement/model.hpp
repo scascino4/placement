@@ -8,6 +8,9 @@
 
 namespace placement {
 
+// CellKind describes the object's physical role; PlacementStatus describes one
+// particular placement. Keeping them separate lets an alternate placement make
+// a physical macro movable without losing its identity.
 enum class CellKind : std::uint8_t { Movable, Terminal, TerminalNonInteracting };
 enum class PlacementStatus : std::uint8_t { Movable, Fixed, FixedNonInteracting };
 enum class Orientation : std::uint8_t { N, E, S, W, FN, FE, FS, FW };
@@ -54,11 +57,15 @@ struct PlacedRectangle {
 [[nodiscard]] PlacedRectangle placed_rectangle(const Cell &cell);
 
 struct Subrow {
+  // X coordinate of the first site and the number of sites available from it.
+  // Gaps between subrows represent placement blockages.
   double origin{};
   std::uint64_t site_count{};
 };
 
 struct Row {
+  // Rows are horizontal: coordinate is Y, while each Subrow supplies its X
+  // extent. Site spacing, rather than site width, determines that extent.
   double coordinate{};
   double height{};
   double site_width{};
@@ -69,6 +76,8 @@ struct Row {
 };
 
 struct Pin {
+  // Pins reference cells by index. Offsets are measured from the center of the
+  // cell's unrotated footprint and are transformed by its placement orientation.
   std::uint32_t cell{};
   PinDirection direction{PinDirection::Unknown};
   double offset_x{};
@@ -152,6 +161,9 @@ struct CellDensityGrid {
 };
 
 struct Board {
+  // Board is the only representation shared by parsers, serializers, and
+  // renderers. Input-format syntax and database units must be resolved before
+  // data reaches this boundary.
   std::string name;
   std::vector<Cell> cells;
   std::vector<Row> rows;

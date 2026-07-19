@@ -12,6 +12,8 @@ namespace placement {
 class Parser {
 public:
   virtual ~Parser() = default;
+  // Parse a backend-specific entry file into the format-neutral model. For
+  // Bookshelf this is an AUX manifest; for LEF/DEF it is the DEF design.
   [[nodiscard]] virtual Board parse(const std::filesystem::path &in) const = 0;
 };
 

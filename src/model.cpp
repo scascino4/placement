@@ -142,6 +142,9 @@ template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const
 
   const auto col0 = static_cast<std::uint64_t>((x0 - grid.min_x) / grid.bin_size);
   const auto row0 = static_cast<std::uint64_t>((y0 - grid.min_y) / grid.bin_size);
+  // Treat the upper and right rectangle edges as open. Without nextafter(), a
+  // rectangle ending exactly on a bin boundary would visit the adjacent bin
+  // and could contribute a spurious zero-area overlap there.
   const auto col1 = std::min(grid.columns - 1, static_cast<std::uint64_t>((std::nextafter(x1, x0) - grid.min_x) / grid.bin_size));
   const auto row1 = std::min(grid.rows - 1, static_cast<std::uint64_t>((std::nextafter(y1, y0) - grid.min_y) / grid.bin_size));
 
@@ -199,6 +202,8 @@ const CellDensityBin &CellDensityGrid::at(std::uint64_t col, std::uint64_t row) 
 UtilizationGrid Board::utilization(double bin_size) const {
   auto grid = make_grid<UtilizationGrid>(rows, bin_size);
 
+  // Row subrows define initial legal capacity. Fixed objects remove only the
+  // portions of that capacity they cover; space outside rows was never legal.
   for (const auto &row : rows)
     for (const auto &subrow : row.subrows)
       add_overlap(grid, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height}, Area::Placeable);
@@ -288,6 +293,8 @@ PinDensityGrid Board::pin_density(double bin_size) const {
 
 CellDensityGrid Board::cell_density(double bin_size) const {
   auto grid = make_grid<CellDensityGrid>(rows, bin_size);
+  // Cell density intentionally uses geometric bin area as capacity, unlike
+  // utilization(), whose denominator is legal row area.
   for_each_bin(grid, [](CellDensityBin &bin, double area) { bin.available_area = area; });
 
   for (const auto &cell : cells) {

@@ -122,6 +122,8 @@ struct Components {
 
   Components parts;
   std::unordered_set<std::string> suffixes;
+  // Component paths are relative to the AUX file, not to the process working
+  // directory. Suffixes identify their roles in the Bookshelf family.
   for (std::size_t i = 2; i < fields.size(); ++i) {
     const std::filesystem::path component(fields[i]);
 
@@ -500,6 +502,8 @@ void parse_placement(const std::filesystem::path &path, Board &board, const Cell
     if ((location.width && *location.width < 0) || (location.height && *location.height < 0))
       records.fail("placement dimensions cannot be negative");
 
+    // Store placements on the already-created cells so all later references
+    // continue to use the stable indices built from the nodes file.
     board.cells[*cell].location = location;
   }
 }

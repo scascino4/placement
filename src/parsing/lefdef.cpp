@@ -37,6 +37,9 @@ public:
   }
 
   bool next() {
+    // Tokens normally view the large reusable input buffer. spill_ owns only
+    // quoted or boundary-spanning tokens, keeping the common path allocation
+    // free while making token() valid until the next call.
     token_ = {};
     spill_.clear();
 
@@ -422,6 +425,8 @@ void parse_lef_port(Tokens &tokens, Bounds &bounds) {
         tokens.fail("macro pin '" + pin.name + "' has no direction");
       if (geometry.empty())
         tokens.fail("macro pin '" + pin.name + "' has no rectangular geometry");
+      // Board stores one representative point per logical pin. Use the center
+      // of its LEF geometry bounds rather than retaining routing shapes.
       pin.x = (geometry.min_x + geometry.max_x) / 2.0;
       pin.y = (geometry.min_y + geometry.max_y) / 2.0;
       return pin;
@@ -563,6 +568,9 @@ struct TopPinState {
 
 class MasterIndices {
 public:
+  // Each Board cell is either a DEF component with a LEF master or a synthetic
+  // cell representing a top-level pin. Use 16-bit indices when the library is
+  // small enough; this array has one entry per component on very large designs.
   explicit MasterIndices(std::size_t macro_count) : narrow_(macro_count < NARROW_TOP_PIN) {}
 
   void reserve(std::size_t count) {
@@ -668,6 +676,8 @@ private:
   [[nodiscard]] double scale(double value) const {
     if (!units_seen_)
       tokens_.fail("UNITS must precede geometric records");
+    // DEF coordinates are integral database units; Board geometry is always
+    // normalized to microns to match LEF dimensions.
     return value / static_cast<double>(db_units_);
   }
 
@@ -804,6 +814,9 @@ private:
 
     while (pins.next()) {
       tokens_.require("top-level pin name");
+      // Represent a top-level DEF pin as a non-interacting terminal cell. This
+      // gives every Pin the same cell-index reference without adding a
+      // format-specific endpoint type to Board.
       Cell cell;
       cell.name = tokens_.token();
       cell.kind = CellKind::TerminalNonInteracting;
@@ -957,6 +970,9 @@ private:
   }
 
   void apply_blockages() {
+    // Convert placement blockage rectangles into gaps in the row model. A site
+    // is removed whenever its [origin, origin + site_width) footprint overlaps
+    // the blockage; spacing controls the origin of successive sites.
     for (const auto &blkg : blockages_) {
       for (auto &row : board_.rows) {
         if (blkg.min_y >= row.coordinate + row.height || blkg.max_y <= row.coordinate)

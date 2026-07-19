@@ -260,6 +260,9 @@ void BinarySerializer::write(const Board &board, const std::filesystem::path &ou
   detail::atomic_output(out, [&](const auto &tmp) {
     Output writer(tmp);
 
+    // The fixed header is magic, board name, then the four top-level counts.
+    // Record groups follow in that same order so index references can be
+    // validated against counts while streaming the file back in.
     writer.bytes(MAGIC.data(), MAGIC.size());
     writer.string(board.name);
     writer.integer(static_cast<std::uint64_t>(board.cells.size()));
@@ -336,6 +339,9 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
   const auto net_count = reader.integer<std::uint64_t>();
   const auto pin_count = reader.integer<std::uint64_t>();
 
+  // Reject hostile or corrupt counts before reserve() can request large memory.
+  // The cumulative lower bound also ensures all record groups can fit in the
+  // bytes that remain, even though their variable-length fields are not known.
   auto min_payload_bytes = checked_min_bytes(cell_count, reader, "cell", MIN_CELL_BYTES);
   min_payload_bytes = checked_min_bytes(row_count, reader, "row", MIN_ROW_BYTES, min_payload_bytes);
   min_payload_bytes = checked_min_bytes(net_count, reader, "net", MIN_NET_BYTES, min_payload_bytes);
@@ -400,6 +406,8 @@ Board BinarySerializer::read(const std::filesystem::path &in) const {
     net.name = reader.string();
     net.first_pin = reader.integer<std::uint64_t>();
     net.pin_count = reader.integer<std::uint64_t>();
+    // A net owns a slice of the shared pin array; slices need not be read yet
+    // to validate their range against the header's pin count.
     if (net.first_pin > pin_count || net.pin_count > pin_count - net.first_pin)
       throw Error(in.string() + ": net pin range is out of bounds");
 
