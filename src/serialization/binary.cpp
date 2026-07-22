@@ -195,7 +195,6 @@ public:
     const auto value = integer<std::uint8_t>();
     if (value > max)
       throw Error(path_.string() + ": invalid " + std::string(name));
-
     return static_cast<Enum>(value);
   }
 
@@ -203,7 +202,6 @@ public:
     const auto value = integer<std::uint8_t>();
     if (value > 1)
       throw Error(path_.string() + ": invalid " + std::string(name));
-
     return value != 0;
   }
 

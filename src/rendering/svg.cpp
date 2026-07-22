@@ -250,7 +250,7 @@ public:
     Bounds box;
     for (const auto &row : board.rows)
       for (const auto &subrow : row.subrows)
-        include_geometry(box, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+        include_geometry(box, subrow_rectangle(row, subrow));
     const auto classes = classify_cells(board, &box);
 
     if (box.empty())
@@ -287,9 +287,11 @@ public:
       out << "  <g transform=\"translate(" << -box.min_x << ' ' << box.max_y << ") scale(1 -1)\" shape-rendering=\"crispEdges\">\n";
 
       for (const auto &row : board.rows)
-        for (const auto &subrow : row.subrows)
-          out << "    <rect class=\"row\" x=\"" << subrow.origin << "\" y=\"" << row.coordinate << "\" width=\""
-              << static_cast<double>(subrow.site_count) * row.site_spacing << "\" height=\"" << row.height << "\"/>\n";
+        for (const auto &subrow : row.subrows) {
+          const auto rect = subrow_rectangle(row, subrow);
+          out << "    <rect class=\"row\" x=\"" << rect.x << "\" y=\"" << rect.y << "\" width=\"" << rect.width << "\" height=\"" << rect.height
+              << "\"/>\n";
+        }
 
       write_paths<CellClass::Movable>(out, board, classes);
       write_paths<CellClass::Macro>(out, board, classes);
@@ -341,7 +343,7 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
   Bounds core;
   for (const auto &row : board.rows)
     for (const auto &subrow : row.subrows)
-      include_geometry(core, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height});
+      include_geometry(core, subrow_rectangle(row, subrow));
 
   if (core.empty())
     throw Error("cannot render " + std::string(DensityPresentation<Grid>::kind) + " without a placement region");
@@ -361,12 +363,9 @@ template <typename Grid> [[nodiscard]] DensityLayout<Grid> density_layout(const 
 
 template <typename Grid, typename Fn> void write_grid_bins(SvgOutput &out, const Grid &grid, Fn write_bin) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
-    const auto y = grid.min_y + static_cast<double>(row) * grid.bin_size;
-    const auto height = std::min(grid.bin_size, grid.max_y - y);
     for (std::uint64_t col = 0; col < grid.columns; ++col) {
-      const auto x = grid.min_x + static_cast<double>(col) * grid.bin_size;
-      const auto width = std::min(grid.bin_size, grid.max_x - x);
-      write_bin(out, grid.at(col, row), x, y, width, height, col, row);
+      const auto rect = grid.bin_rectangle(col, row);
+      write_bin(out, grid.at(col, row), rect.x, rect.y, rect.width, rect.height, col, row);
     }
   }
 }

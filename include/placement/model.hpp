@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -75,6 +76,11 @@ struct Row {
   std::vector<Subrow> subrows;
 };
 
+// Returns the physical extent represented by one row segment. Keeping this
+// calculation in the model avoids making every consumer repeat the rule that
+// site spacing, rather than site width, determines a subrow's span.
+[[nodiscard]] PlacedRectangle subrow_rectangle(const Row &row, const Subrow &subrow);
+
 struct Pin {
   // Pins reference cells by index. Offsets are measured from the center of the
   // cell's unrotated footprint and are transformed by its placement orientation.
@@ -102,7 +108,7 @@ struct UtilizationBin {
   [[nodiscard]] std::optional<double> utilization() const;
 };
 
-struct UtilizationGrid {
+struct DensityGridGeometry {
   double min_x{};
   double min_y{};
   double max_x{};
@@ -110,11 +116,19 @@ struct UtilizationGrid {
   double bin_size{};
   std::uint64_t columns{};
   std::uint64_t rows{};
-  // Row-major bins, starting at the placement region's lower-left corner.
-  std::vector<UtilizationBin> bins;
 
-  [[nodiscard]] const UtilizationBin &at(std::uint64_t col, std::uint64_t row) const;
+  [[nodiscard]] std::size_t bin_index(std::uint64_t col, std::uint64_t row) const;
+  [[nodiscard]] PlacedRectangle bin_rectangle(std::uint64_t col, std::uint64_t row) const;
 };
+
+template <typename Bin> struct DensityGrid : DensityGridGeometry {
+  // Row-major bins, starting at the placement region's lower-left corner.
+  std::vector<Bin> bins;
+
+  [[nodiscard]] const Bin &at(std::uint64_t col, std::uint64_t row) const { return bins[bin_index(col, row)]; }
+};
+
+using UtilizationGrid = DensityGrid<UtilizationBin>;
 
 struct PinDensityBin {
   std::uint64_t pin_count{};
@@ -123,19 +137,7 @@ struct PinDensityBin {
   [[nodiscard]] double density() const;
 };
 
-struct PinDensityGrid {
-  double min_x{};
-  double min_y{};
-  double max_x{};
-  double max_y{};
-  double bin_size{};
-  std::uint64_t columns{};
-  std::uint64_t rows{};
-  // Row-major bins, starting at the placement region's lower-left corner.
-  std::vector<PinDensityBin> bins;
-
-  [[nodiscard]] const PinDensityBin &at(std::uint64_t col, std::uint64_t row) const;
-};
+using PinDensityGrid = DensityGrid<PinDensityBin>;
 
 struct CellDensityBin {
   // Movable-object/bin overlap divided by capacity left after fixed physical
@@ -146,19 +148,7 @@ struct CellDensityBin {
   [[nodiscard]] std::optional<double> density() const;
 };
 
-struct CellDensityGrid {
-  double min_x{};
-  double min_y{};
-  double max_x{};
-  double max_y{};
-  double bin_size{};
-  std::uint64_t columns{};
-  std::uint64_t rows{};
-  // Row-major bins, starting at the placement region's lower-left corner.
-  std::vector<CellDensityBin> bins;
-
-  [[nodiscard]] const CellDensityBin &at(std::uint64_t col, std::uint64_t row) const;
-};
+using CellDensityGrid = DensityGrid<CellDensityBin>;
 
 struct Board {
   // Board is the only representation shared by parsers, serializers, and

@@ -52,6 +52,10 @@ PlacedRectangle placed_rectangle(const Cell &cell) {
   return {loc.x, loc.y, width, height};
 }
 
+PlacedRectangle subrow_rectangle(const Row &row, const Subrow &subrow) {
+  return {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
+}
+
 namespace {
 
 void validate(const PlacedRectangle &rect);
@@ -93,7 +97,7 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
   detail::Bounds box;
   for (const auto &row : rows)
     for (const auto &subrow : row.subrows) {
-      const PlacedRectangle rect{subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height};
+      const auto rect = subrow_rectangle(row, subrow);
       validate(rect);
       box.include(rect);
     }
@@ -106,26 +110,25 @@ template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &ro
   if (cols == 0 || row_count == 0 || cols > std::numeric_limits<std::size_t>::max() / row_count)
     throw Error(std::string(kind) + " grid is too large");
 
-  Grid grid{box.min_x, box.min_y, box.max_x, box.max_y, bin_size, cols, row_count, {}};
+  Grid grid;
+  grid.min_x = box.min_x;
+  grid.min_y = box.min_y;
+  grid.max_x = box.max_x;
+  grid.max_y = box.max_y;
+  grid.bin_size = bin_size;
+  grid.columns = cols;
+  grid.rows = row_count;
   grid.bins.resize(static_cast<std::size_t>(cols * row_count));
   return grid;
 }
 
 template <typename Grid, typename Fn> void for_each_bin(Grid &grid, Fn fn) {
   for (std::uint64_t row = 0; row < grid.rows; ++row) {
-    const auto height = std::min(grid.bin_size, grid.max_y - (grid.min_y + static_cast<double>(row) * grid.bin_size));
     for (std::uint64_t col = 0; col < grid.columns; ++col) {
-      const auto width = std::min(grid.bin_size, grid.max_x - (grid.min_x + static_cast<double>(col) * grid.bin_size));
-      fn(grid.bins[static_cast<std::size_t>(row * grid.columns + col)], width * height);
+      const auto rect = grid.bin_rectangle(col, row);
+      fn(grid.bins[static_cast<std::size_t>(row * grid.columns + col)], rect.width * rect.height);
     }
   }
-}
-
-template <typename Grid> [[nodiscard]] const auto &bin_at(const Grid &grid, std::uint64_t col, std::uint64_t row) {
-  if (col >= grid.columns || row >= grid.rows)
-    throw Error(std::string(GridTraits<Grid>::kind) + " bin index is out of bounds");
-
-  return grid.bins[static_cast<std::size_t>(row * grid.columns + col)];
 }
 
 template <typename Grid, typename Accumulate> void add_overlap(Grid &grid, const PlacedRectangle &rect, Accumulate accumulate) {
@@ -175,29 +178,33 @@ void add_overlap(UtilizationGrid &grid, const PlacedRectangle &rect, Area area, 
 std::optional<double> UtilizationBin::utilization() const {
   if (placeable_area <= 0)
     return std::nullopt;
-
   return movable_area / placeable_area;
 }
 
-const UtilizationBin &UtilizationGrid::at(std::uint64_t col, std::uint64_t row) const { return bin_at(*this, col, row); }
+std::size_t DensityGridGeometry::bin_index(std::uint64_t col, std::uint64_t row) const {
+  if (col >= columns || row >= rows)
+    throw Error("density bin index is out of bounds");
+  return static_cast<std::size_t>(row * columns + col);
+}
+
+PlacedRectangle DensityGridGeometry::bin_rectangle(std::uint64_t col, std::uint64_t row) const {
+  (void)bin_index(col, row);
+  const auto x = min_x + static_cast<double>(col) * bin_size;
+  const auto y = min_y + static_cast<double>(row) * bin_size;
+  return {x, y, std::min(bin_size, max_x - x), std::min(bin_size, max_y - y)};
+}
 
 double PinDensityBin::density() const {
   if (area <= 0)
     return 0;
-
   return static_cast<double>(pin_count) / area;
 }
-
-const PinDensityBin &PinDensityGrid::at(std::uint64_t col, std::uint64_t row) const { return bin_at(*this, col, row); }
 
 std::optional<double> CellDensityBin::density() const {
   if (available_area <= 0)
     return std::nullopt;
-
   return movable_area / available_area;
 }
-
-const CellDensityBin &CellDensityGrid::at(std::uint64_t col, std::uint64_t row) const { return bin_at(*this, col, row); }
 
 UtilizationGrid Board::utilization(double bin_size) const {
   auto grid = make_grid<UtilizationGrid>(rows, bin_size);
@@ -206,7 +213,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
   // portions of that capacity they cover; space outside rows was never legal.
   for (const auto &row : rows)
     for (const auto &subrow : row.subrows)
-      add_overlap(grid, {subrow.origin, row.coordinate, static_cast<double>(subrow.site_count) * row.site_spacing, row.height}, Area::Placeable);
+      add_overlap(grid, subrow_rectangle(row, subrow), Area::Placeable);
 
   std::vector<std::size_t> row_order(rows.size());
   std::iota(row_order.begin(), row_order.end(), 0);
@@ -231,7 +238,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
         continue;
 
       for (const auto &subrow : row.subrows) {
-        const auto subrow_right = subrow.origin + static_cast<double>(subrow.site_count) * row.site_spacing;
+        const auto subrow_right = subrow_rectangle(row, subrow).right();
         const auto x0 = std::max(subrow.origin, rect.x);
         const auto x1 = std::min(subrow_right, rect.right());
 

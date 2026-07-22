@@ -51,6 +51,14 @@ void placed_rectangle_test() {
   cell.location->orientation = Orientation::E;
   const auto overridden = placed_rectangle(cell);
   check(overridden.width == 13 && overridden.height == 11, "placement dimensions are applied before rotation");
+
+  Row placement_row;
+  placement_row.coordinate = 7;
+  placement_row.height = 2;
+  placement_row.site_width = 1;
+  placement_row.site_spacing = 3;
+  const auto row_rect = subrow_rectangle(placement_row, {5, 4});
+  check(row_rect.x == 5 && row_rect.y == 7 && row_rect.width == 12 && row_rect.height == 2, "subrow extent uses site spacing");
 }
 
 void utilization_test() {
@@ -155,6 +163,8 @@ void cell_density_test() {
 
   const auto grid = board.cell_density(10);
   check(grid.columns == 3 && grid.rows == 1 && grid.bins.size() == 3, "cell density grid dimensions");
+  const auto edge = grid.bin_rectangle(2, 0);
+  check(edge.x == 20 && edge.y == 0 && edge.width == 5 && edge.height == 10, "density grid exposes clipped bin geometry");
   check(!grid.at(0, 0).density() && close(grid.at(0, 0).movable_area, 0) && close(grid.at(0, 0).available_area, 0),
         "fixed macros consume capacity without contributing density");
   check(close(grid.at(1, 0).movable_area, 50) && close(*grid.at(1, 0).density(), 0.5), "cell density splits movable cells at bin boundaries");
