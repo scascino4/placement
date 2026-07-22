@@ -64,8 +64,75 @@ void malformed_lefdef_test() {
   expect_error([&] { (void)parser->parse(tmp.path() / "design.def"); }, "requires at least one --lef-file");
 }
 
+void lef_library_validation_test() {
+  TempDir tmp;
+  lefdef_fixture(tmp.path());
+  write(tmp.path() / "tech.lef", "VERSION 5.8 ; END LIBRARY\n");
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "LEF inputs contain no placement sites");
+
+  lefdef_fixture(tmp.path());
+  write(tmp.path() / "cells.lef", "VERSION 5.8 ; END LIBRARY\n");
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "LEF inputs contain no macros");
+
+  lefdef_fixture(tmp.path());
+  auto text = read(tmp.path() / "tech.lef");
+  const auto size = text.find("SIZE 1 BY 2");
+  check(size != std::string::npos, "fixture site size exists");
+  text.replace(size, std::string_view("SIZE 1 BY 2").size(), "SIZE 0 BY 2");
+  write(tmp.path() / "tech.lef", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "site 'core' requires positive dimensions");
+
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "cells.lef");
+  const auto direction = text.find("PIN A DIRECTION INPUT ;");
+  check(direction != std::string::npos, "fixture macro pin direction exists");
+  text.replace(direction, std::string_view("PIN A DIRECTION INPUT ;").size(), "PIN A USE SIGNAL ;");
+  write(tmp.path() / "cells.lef", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "macro pin 'A' has no direction");
+}
+
+void def_required_fields_test() {
+  TempDir tmp;
+  lefdef_fixture(tmp.path());
+  auto text = read(tmp.path() / "design.def");
+  auto pos = text.find("ROW row0 core");
+  check(pos != std::string::npos, "fixture row exists");
+  text.replace(pos, std::string_view("ROW row0 core").size(), "ROW row0 missing");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "row references unknown site 'missing'");
+
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "design.def");
+  pos = text.find("    + DIRECTION INPUT\n");
+  check(pos != std::string::npos, "fixture top-level pin direction exists");
+  text.erase(pos, std::string_view("    + DIRECTION INPUT\n").size());
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "top-level pin 'IN' has no direction");
+
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "design.def");
+  pos = text.find("  - IN + NET n1\n");
+  check(pos != std::string::npos, "fixture top-level pin net exists");
+  text.replace(pos, std::string_view("  - IN + NET n1\n").size(), "  - IN\n");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "top-level pin 'IN' has no net");
+
+  lefdef_fixture(tmp.path());
+  text = read(tmp.path() / "design.def");
+  pos = text.find("( PIN IN )");
+  check(pos != std::string::npos, "fixture top-level net endpoint exists");
+  text.replace(pos, std::string_view("( PIN IN )").size(), "( PIN missing )");
+  write(tmp.path() / "design.def", text);
+  expect_error([&] { (void)parse_lefdef_fixture(tmp.path()); }, "net references unknown top-level pin 'missing'");
+}
+
 } // namespace
 
-Tests lefdef_tests() { return {{"LEF/DEF parser", lefdef_parser_test}, {"LEF/DEF parser diagnostics", malformed_lefdef_test}}; }
+Tests lefdef_tests() {
+  return {{"LEF/DEF parser", lefdef_parser_test},
+          {"LEF/DEF parser diagnostics", malformed_lefdef_test},
+          {"LEF library validation", lef_library_validation_test},
+          {"DEF required fields", def_required_fields_test}};
+}
 
 } // namespace placement::test

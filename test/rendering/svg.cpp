@@ -19,13 +19,13 @@ void svg_test() {
   const auto binary = tmp.path() / "tiny.placebin";
   serializer->write(board, binary);
   board = serializer->read(binary);
-  board.name = "tiny <&>";
+  board.name = "tiny <&> \"'";
   board.cells[1].location->status = PlacementStatus::Movable;
   auto renderer = make_renderer("SVG");
   const auto svg = tmp.path() / "tiny.svg";
   renderer->render(board, svg);
   const auto contents = read(svg);
-  check(contents.find("tiny &lt;&amp;&gt; placement") != std::string::npos, "escaped SVG title");
+  check(contents.find("tiny &lt;&amp;&gt; &quot;&apos; placement") != std::string::npos, "escaped SVG title");
   check(contents.find("translate(") != std::string::npos && contents.find("scale(1 -1)") != std::string::npos, "placement coordinate transform");
   check(contents.find("class=\"movable\"") != std::string::npos && contents.find("class=\"macro\"") != std::string::npos &&
             contents.find("class=\"fixed-ni\"") != std::string::npos,
@@ -44,6 +44,8 @@ void svg_test() {
             contains_parts(dark_contents, {".macro{fill:", dark.macro_fill, ";stroke:", dark.macro_stroke}),
         "dark placement SVG palette");
   check(contents.find(dark.surface) == std::string::npos, "light placement SVG remains the default");
+
+  board.name = "tiny <&>";
 
   auto util_renderer = make_renderer("utilization-svg", {.bin_size = 5.0});
   const auto util_svg = tmp.path() / "utilization.svg";
@@ -115,6 +117,27 @@ void svg_test() {
   Board empty;
   expect_error([&] { renderer->render(empty, tmp.path() / "empty.svg"); }, "without geometry");
   check(!std::filesystem::exists(tmp.path() / "empty.svg"), "failed render must not leave output");
+  expect_error([&] { util_renderer->render(empty, tmp.path() / "empty-utilization.svg"); }, "without a placement region");
+  expect_error([&] { pin_renderer->render(empty, tmp.path() / "empty-pin-density.svg"); }, "without a placement region");
+  expect_error([&] { cell_renderer->render(empty, tmp.path() / "empty-cell-density.svg"); }, "without a placement region");
+
+  Board unavailable;
+  Row unavailable_row;
+  unavailable_row.height = 10;
+  unavailable_row.site_width = 1;
+  unavailable_row.site_spacing = 1;
+  unavailable_row.subrows.push_back({0, 10});
+  unavailable.rows.push_back(unavailable_row);
+  Cell blockage;
+  blockage.width = 10;
+  blockage.height = 10;
+  blockage.location.emplace();
+  blockage.location->status = PlacementStatus::Fixed;
+  unavailable.cells.push_back(blockage);
+  const auto unavailable_svg = tmp.path() / "unavailable.svg";
+  cell_renderer->render(unavailable, unavailable_svg);
+  check(read(unavailable_svg).find("available area; density unavailable") != std::string::npos,
+        "cell-density SVG labels bins without remaining capacity");
   expect_error([&] { (void)make_renderer("unknown"); }, "unsupported output format");
 }
 

@@ -76,13 +76,77 @@ void placement_override_test() {
   expect_error([&] { (void)parser->parse(tmp.path() / "tiny.aux"); }, override.string() + ":2: placement references unknown cell");
 }
 
+void bookshelf_manifest_validation_test() {
+  TempDir tmp;
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.aux", "UnknownFormat : tiny.nodes tiny.nets tiny.pl tiny.scl\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "unsupported AUX format");
+
+  write(tmp.path() / "tiny.aux", "RowBasedPlacement : a.nodes b.nodes tiny.nets tiny.pl tiny.scl\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate component suffix '.nodes'");
+
+  write(tmp.path() / "tiny.aux", "RowBasedPlacement : tiny.nodes tiny.nets tiny.pl unsupported.foo\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "unsupported component suffix '.foo'");
+
+  write(tmp.path() / "tiny.aux", "RowBasedPlacement : tiny.nodes tiny.nets tiny.pl\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "manifest requires .nodes, .nets, .pl, and .scl");
+}
+
+void bookshelf_record_validation_test() {
+  TempDir tmp;
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nodes", "UCLA nodes 1.0\nNumNodes : 1\nNumTerminals : 0\na -1 2\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "cell dimensions cannot be negative");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nodes", "UCLA nodes 1.0\nNumNodes : 1\nNumTerminals : 1\na 1 2 unsupported\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "unknown node kind 'unsupported'");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.nets", "UCLA nets 1.0\nNumNets : 1\nNumPins : 1\nNetDegree : 1 n\na I 1 2\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "pin offsets require ': <x> <y>'");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.wts", "UCLA wts 1.0\na 1\nb 1 2\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "inconsistent node weight dimension");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.wts", "UCLA wts 1.0\nmissing 1\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "weight references unknown cell or net 'missing'");
+}
+
+void bookshelf_row_and_placement_validation_test() {
+  TempDir tmp;
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.scl", "UCLA scl 1.0\nNumRows : 1\nCoreRow Horizontal\n"
+                                 "Coordinate : 0\nHeight : 1\nSitespacing : 1\nSitesymmetry : diagonal\n"
+                                 "SubrowOrigin : 0 NumSites : 1\nEnd\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "unknown site symmetry 'diagonal'");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.scl", "UCLA scl 1.0\nNumRows : 1\nCoreRow Horizontal\nCoordinate : 0\nSitespacing : 0\n"
+                                 "SubrowOrigin : 0 NumSites : 1\nEnd\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "invalid row dimensions");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.pl", "UCLA pl 1.0\na 0 0 : N\na 1 1 : N\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate placement for 'a'");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.pl", "UCLA pl 1.0\na 0 0 : N DIMS=(-1,2)\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "placement dimensions cannot be negative");
+}
+
 } // namespace
 
 Tests bookshelf_tests() {
   return {{"Bookshelf parser", bookshelf_parser_test},
           {"Bookshelf parser diagnostics", malformed_bookshelf_test},
           {"Bookshelf parser control-byte blank line", bookshelf_control_byte_blank_line_test},
-          {"placement override", placement_override_test}};
+          {"placement override", placement_override_test},
+          {"Bookshelf manifest validation", bookshelf_manifest_validation_test},
+          {"Bookshelf record validation", bookshelf_record_validation_test},
+          {"Bookshelf row and placement validation", bookshelf_row_and_placement_validation_test}};
 }
 
 } // namespace placement::test

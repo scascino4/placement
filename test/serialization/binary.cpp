@@ -33,6 +33,16 @@ void binary_test() {
   check(decoded.cells[1].macro && !decoded.cells[2].macro, "binary macro identity");
   check(decoded.cells[2].location->orientation == Orientation::FW, "binary orientation");
   check(decoded.pins[0].offset_x == -0.5 && decoded.nets[0].pin_count == 3, "binary connectivity");
+  expect_error([&] { (void)serializer->read(tmp.path() / "missing.placebin"); }, "cannot open");
+
+  Board empty;
+  empty.name = "empty";
+  const auto empty_path = tmp.path() / "empty.placebin";
+  serializer->write(empty, empty_path);
+  const auto decoded_empty = serializer->read(empty_path);
+  check(decoded_empty.name == "empty" && decoded_empty.cells.empty() && decoded_empty.rows.empty() && decoded_empty.nets.empty() &&
+            decoded_empty.pins.empty(),
+        "empty boards round trip");
 
   auto bytes = read(first);
   bytes[0] = 'X';
@@ -69,6 +79,17 @@ void binary_test() {
   set_uint64_le(bytes, counts_offset + 3 * sizeof(std::uint64_t), 0);
   write(tmp.path() / "impossible-aggregate-count.placebin", bytes);
   expect_error([&] { (void)serializer->read(tmp.path() / "impossible-aggregate-count.placebin"); }, "impossible row count");
+
+  bytes = read(first);
+  const auto first_cell_kind = payload_offset + sizeof(std::uint32_t) + board.cells[0].name.size() + 2 * sizeof(std::uint64_t);
+  bytes[first_cell_kind] = static_cast<char>(0xff);
+  write(tmp.path() / "bad-cell-kind.placebin", bytes);
+  expect_error([&] { (void)serializer->read(tmp.path() / "bad-cell-kind.placebin"); }, "invalid cell kind");
+
+  bytes = read(first);
+  bytes[first_cell_kind + 1] = 2;
+  write(tmp.path() / "bad-macro-flag.placebin", bytes);
+  expect_error([&] { (void)serializer->read(tmp.path() / "bad-macro-flag.placebin"); }, "invalid macro flag");
 
   Board invalid_range;
   invalid_range.name = "invalid";

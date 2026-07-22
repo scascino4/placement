@@ -1,5 +1,7 @@
 #include "suites.hpp"
 
+#include <limits>
+
 namespace placement::test {
 namespace {
 
@@ -179,14 +181,38 @@ void cell_density_test() {
   expect_error([&] { (void)grid.at(3, 0); }, "out of bounds");
 }
 
+void density_validation_test() {
+  Board empty;
+  expect_error([&] { (void)empty.utilization(10); }, "without a non-empty placement region");
+  expect_error([&] { (void)empty.pin_density(10); }, "without a non-empty placement region");
+  expect_error([&] { (void)empty.cell_density(10); }, "without a non-empty placement region");
+
+  Board board;
+  board.rows.push_back(row(10, 10));
+  board.cells.emplace_back();
+  board.cells[0].width = 1;
+  board.cells[0].height = 1;
+  board.cells[0].location.emplace();
+  board.cells[0].location->x = std::numeric_limits<double>::quiet_NaN();
+  expect_error([&] { (void)board.utilization(10); }, "non-finite or negative geometry");
+  expect_error([&] { (void)board.cell_density(10); }, "non-finite or negative geometry");
+
+  board.cells[0].location->x = 9;
+  board.pins.push_back({0, PinDirection::Input, std::numeric_limits<double>::infinity(), 0});
+  expect_error([&] { (void)board.pin_density(10); }, "non-finite pin geometry");
+
+  board.pins[0].offset_x = 0.5;
+  const auto boundary = board.pin_density(10);
+  check(boundary.at(0, 0).pin_count == 1, "pins on the upper grid boundary belong to the last bin");
+  check(PinDensityBin{}.density() == 0, "zero-area pin bins have zero density");
+}
+
 } // namespace
 
 Tests model_tests() {
-  return {{"oriented offset", orient_offset_test},
-          {"oriented cell footprint", placed_rectangle_test},
-          {"utilization grid", utilization_test},
-          {"pin density grid", pin_density_test},
-          {"cell density grid", cell_density_test}};
+  return {{"oriented offset", orient_offset_test},  {"oriented cell footprint", placed_rectangle_test},
+          {"utilization grid", utilization_test},   {"pin density grid", pin_density_test},
+          {"cell density grid", cell_density_test}, {"density validation", density_validation_test}};
 }
 
 } // namespace placement::test
