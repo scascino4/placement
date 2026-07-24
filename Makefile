@@ -190,17 +190,32 @@ $(FUZZ_BUILD_DIR):
 fuzz: $(FUZZ_BINS)
 
 fuzz-run: $(FUZZ_BINS)
-	@set -e; for target in $(FUZZ_TARGETS); do \
+	@failed=""; passed=0; total=0; \
+	for target in $(FUZZ_TARGETS); do \
+		total=$$((total + 1)); \
 		corpus="fuzz/corpora/$$target"; crashes="$(FUZZ_CRASH_DIR)"; \
 		mkdir -p "$$corpus" "$$crashes"; \
 		echo "Fuzzing $$target"; \
-		"$(FUZZ_BUILD_DIR)/placement_fuzz_$$target" \
+		if "$(FUZZ_BUILD_DIR)/placement_fuzz_$$target" \
 			-max_total_time=$(FUZZ_SECONDS) -max_len=$(FUZZ_MAX_LEN) \
 			-timeout=$(FUZZ_TIMEOUT) -rss_limit_mb=$(FUZZ_RSS_LIMIT_MB) \
 			-print_funcs=0 \
 			-artifact_prefix="$$crashes/" \
-			"$$corpus" fuzz/corpus; \
-	done
+			"$$corpus" fuzz/corpus; then \
+			passed=$$((passed + 1)); \
+			echo "[PASS] $$target"; \
+		else \
+			status=$$?; failed="$$failed $$target"; \
+			echo "[FAIL] $$target (exit status $$status)"; \
+		fi; \
+	done; \
+	echo; echo "=== Fuzz run summary ==="; \
+	if [ -n "$$failed" ]; then \
+		echo "PROBLEMS FOUND: $$passed/$$total targets passed."; \
+		echo "Failed targets:$$failed"; \
+		exit 1; \
+	fi; \
+	echo "NO PROBLEMS FOUND: all $$total targets passed."
 
 valgrind:
 	+VALGRIND_BUILD_DIR="$(VALGRIND_BUILD_DIR)" \
