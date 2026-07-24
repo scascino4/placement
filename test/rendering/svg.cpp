@@ -21,6 +21,10 @@ void svg_test() {
   board = serializer->read(binary);
   board.name = "tiny <&> \"'";
   board.cells[1].location->status = PlacementStatus::Movable;
+  Location decimal_location;
+  decimal_location.x = -0.000001;
+  decimal_location.y = 0.000001;
+  board.cells[3].location = decimal_location;
   auto renderer = make_renderer("SVG");
   const auto svg = tmp.path() / "tiny.svg";
   renderer->render(board, svg);
@@ -34,6 +38,7 @@ void svg_test() {
   check(contains_parts(contents, {".macro{fill:", style.macro_fill, ";stroke:", style.macro_stroke}),
         "light placement SVG macros have contrasting outlines");
   check(contents.find("M10.5 20h4v2h-4z") != std::string::npos, "rotated cell dimensions");
+  check(contents.find("M-0.000001 0.000001h1.5v2.5h-1.5z") != std::string::npos, "fixed-decimal SVG geometry");
 
   auto dark_renderer = make_renderer("svg", {.bin_size = std::nullopt, .dark_mode = true});
   const auto dark_svg = tmp.path() / "tiny-dark.svg";

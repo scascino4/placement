@@ -251,19 +251,38 @@ PinDensityGrid Board::pin_density(double bin_size) const {
   auto grid = make_grid<PinDensityGrid>(rows, bin_size, "pin density");
   for_each_bin(grid, [](PinDensityBin &bin, double area) { bin.area = area; });
 
+  // Pins are grouped by net, so repeated cell references have little locality
+  // on large designs. A compact center/orientation cache avoids randomly
+  // touching the much larger Cell records for every pin.
+  struct PinAnchor {
+    double x{};
+    double y{};
+  };
+  std::vector<PinAnchor> anchors(cells.size());
+  constexpr auto UNPLACED = std::numeric_limits<std::uint8_t>::max();
+  std::vector<std::uint8_t> orientations(cells.size(), UNPLACED);
+  for (std::size_t idx = 0; idx < cells.size(); ++idx) {
+    const auto &cell = cells[idx];
+    if (!cell.location)
+      continue;
+    const auto rect = placed_rectangle(cell);
+    anchors[idx] = {rect.x + rect.width / 2.0, rect.y + rect.height / 2.0};
+    orientations[idx] = static_cast<std::uint8_t>(cell.location->orientation);
+  }
+
   for (const auto &pin : pins) {
     if (pin.cell >= cells.size())
       throw Error("cannot calculate pin density with an invalid cell reference");
 
-    const auto &cell = cells[pin.cell];
-    if (!cell.location)
+    const auto orientation = orientations[pin.cell];
+    if (orientation == UNPLACED)
       continue;
 
     // Transform the cell-relative pin offset into board coordinates.
-    const auto rect = placed_rectangle(cell);
-    auto [x, y] = orient_offset(pin.offset_x, pin.offset_y, cell.location->orientation);
-    x += rect.x + rect.width / 2.0;
-    y += rect.y + rect.height / 2.0;
+    const auto &anchor = anchors[pin.cell];
+    auto [x, y] = orient_offset(pin.offset_x, pin.offset_y, static_cast<Orientation>(orientation));
+    x += anchor.x;
+    y += anchor.y;
 
     if (!std::isfinite(x) || !std::isfinite(y))
       throw Error("cannot calculate pin density for non-finite pin geometry");

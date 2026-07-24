@@ -13,6 +13,11 @@ or the command-line applications.
 - `make`: build `build/bin/placement_parse` and
   `build/bin/placement_render`.
 - `make test`: build and run the standard-library-only unit tests.
+- `make benchmark`: build the stage-level performance driver.
+- `make benchmark-run`: warm and measure the default large Bookshelf and
+  LEF/DEF designs five times. `make benchmark-run-quick` uses smaller designs
+  for a one-sample smoke run. Results are written under `build/benchmark`, and
+  the `BENCH_*` Make variables select run counts, designs, and output paths.
 - `make format`: format production, test, and fuzz C++ sources with
   `clang-format`.
 - `make fuzz`: build the Bookshelf, LEF/DEF, binary, model, and SVG libFuzzer

@@ -73,8 +73,17 @@ public:
     if (buf_.size() - used_ < sizeof(T))
       flush_buf();
 
-    for (std::size_t i = 0; i < sizeof(T); ++i)
-      buf_[used_++] = static_cast<char>(static_cast<std::uint8_t>(value >> (i * 8)));
+    if constexpr (std::endian::native == std::endian::little) {
+      std::memcpy(buf_.data() + used_, &value, sizeof(T));
+      used_ += sizeof(T);
+    } else if constexpr (std::endian::native == std::endian::big) {
+      value = std::byteswap(value);
+      std::memcpy(buf_.data() + used_, &value, sizeof(T));
+      used_ += sizeof(T);
+    } else {
+      for (std::size_t i = 0; i < sizeof(T); ++i)
+        buf_[used_++] = static_cast<char>(static_cast<std::uint8_t>(value >> (i * 8)));
+    }
   }
 
   void real(double value) { integer(std::bit_cast<std::uint64_t>(value)); }
@@ -157,11 +166,20 @@ public:
     if (avail_ - pos_ < sizeof(T))
       refill(sizeof(T));
 
-    std::uint64_t value{};
-    for (std::size_t i = 0; i < sizeof(T); ++i)
-      value |= static_cast<std::uint64_t>(static_cast<unsigned char>(buf_[pos_++])) << (i * 8);
+    T value{};
+    if constexpr (std::endian::native == std::endian::little) {
+      std::memcpy(&value, buf_.data() + pos_, sizeof(T));
+      pos_ += sizeof(T);
+    } else if constexpr (std::endian::native == std::endian::big) {
+      std::memcpy(&value, buf_.data() + pos_, sizeof(T));
+      value = std::byteswap(value);
+      pos_ += sizeof(T);
+    } else {
+      for (std::size_t i = 0; i < sizeof(T); ++i)
+        value |= static_cast<T>(static_cast<T>(static_cast<unsigned char>(buf_[pos_++])) << (i * 8));
+    }
     consumed_ += sizeof(T);
-    return static_cast<T>(value);
+    return value;
   }
 
   [[nodiscard]] double real() { return std::bit_cast<double>(integer<std::uint64_t>()); }

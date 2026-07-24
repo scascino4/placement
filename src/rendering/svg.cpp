@@ -110,6 +110,18 @@ public:
     if (value != 0.0 && value >= -MAX_EXACT_INTEGER && value <= MAX_EXACT_INTEGER && std::trunc(value) == value)
       return *this << static_cast<std::int64_t>(value);
 
+    // Physical-design geometry is normally expressed with at most six
+    // fractional decimal places. Preserve an exactly representable value with
+    // a cheap integer conversion; calculated densities and unusual inputs
+    // still use the general floating-point formatter below.
+    constexpr double DECIMAL_SCALE = 1'000'000.0;
+    constexpr double MAX_SCALED_DECIMAL = 9'000'000'000'000'000.0;
+    if (precision == 12 && value != 0.0 && std::abs(value) <= MAX_SCALED_DECIMAL / DECIMAL_SCALE) {
+      const auto scaled = static_cast<std::int64_t>(std::round(value * DECIMAL_SCALE));
+      if (static_cast<double>(scaled) / DECIMAL_SCALE == value)
+        return fixed_decimal(scaled);
+    }
+
     std::array<char, 32> encoded{};
     const auto res = std::to_chars(encoded.data(), encoded.data() + encoded.size(), value, std::chars_format::general, precision);
     if (res.ec != std::errc{})
@@ -125,6 +137,31 @@ public:
   }
 
 private:
+  SvgOutput &fixed_decimal(std::int64_t scaled) {
+    constexpr std::uint64_t SCALE = 1'000'000;
+    const bool negative = scaled < 0;
+    const auto magnitude = negative ? static_cast<std::uint64_t>(-scaled) : static_cast<std::uint64_t>(scaled);
+    const auto whole = magnitude / SCALE;
+    auto fraction = magnitude % SCALE;
+    if (negative)
+      *this << '-';
+    *this << whole;
+    if (fraction == 0)
+      return *this;
+
+    std::uint64_t divisor = 100'000;
+    *this << '.';
+    while (fraction % 10 == 0) {
+      fraction /= 10;
+      divisor /= 10;
+    }
+    while (divisor > fraction) {
+      *this << '0';
+      divisor /= 10;
+    }
+    return *this << fraction;
+  }
+
   void write(const char *data, std::size_t size) {
     while (size != 0) {
       if (used_ == buf_.size())

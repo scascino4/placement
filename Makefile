@@ -21,6 +21,8 @@ PARSE_OBJECT := $(OBJ_DIR)/apps/parse_main.o
 RENDER_OBJECT := $(OBJ_DIR)/apps/render_main.o
 TEST_SOURCES := $(wildcard test/*.cpp test/*/*.cpp)
 TEST_OBJECTS := $(TEST_SOURCES:test/%.cpp=$(OBJ_DIR)/test/%.o)
+BENCH_SOURCES := $(wildcard bench/*.cpp)
+BENCH_OBJECTS := $(BENCH_SOURCES:bench/%.cpp=$(OBJ_DIR)/bench/%.o)
 
 FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
 	include/placement/*/*.hpp \
@@ -28,12 +30,22 @@ FORMAT_SOURCES := $(wildcard include/placement/*.hpp \
 	src/*/*.cpp src/*/*.hpp \
 	test/*.cpp test/*.hpp \
 	test/*/*.cpp test/*/*.hpp \
+	bench/*.cpp \
 	fuzz/*.cpp fuzz/*.hpp \
 	fuzz/*/*.cpp fuzz/*/*.hpp)
 
 PARSE_BIN := $(BIN_DIR)/placement_parse
 RENDER_BIN := $(BIN_DIR)/placement_render
 TEST_BIN := $(BIN_DIR)/placement_tests
+BENCH_BIN := $(BIN_DIR)/placement_benchmark
+BENCH_RUNS ?= 5
+BENCH_DIR ?= $(BUILD_DIR)/benchmark
+BENCH_BOOKSHELF_DESIGN ?= bigblue4
+BENCH_LEFDEF_DESIGN ?= mgc_superblue12
+BENCH_QUICK_RUNS ?= 1
+BENCH_QUICK_DIR ?= $(BENCH_DIR)/quick
+BENCH_QUICK_BOOKSHELF_DESIGN ?= adaptec1
+BENCH_QUICK_LEFDEF_DESIGN ?= mgc_fft_b
 FUZZ_BUILD_DIR := $(BUILD_DIR)/fuzz
 FUZZ_OBJ_DIR := $(FUZZ_BUILD_DIR)/obj
 FUZZ_TARGETS := bookshelf lefdef binary model svg
@@ -84,7 +96,8 @@ ISPD2015_DREAMPLACE_DESIGNS := $(patsubst %.gp.def,%,$(notdir \
 ISPD2015_DREAMPLACE_OUTPUT_TARGETS := $(addprefix ispd2015-dreamplace-output-, \
 	$(ISPD2015_DREAMPLACE_DESIGNS))
 
-.PHONY: all test fuzz fuzz-run valgrind check-data outputs $(ISPD2005_OUTPUT_TARGETS) \
+.PHONY: all test benchmark benchmark-run benchmark-run-quick fuzz fuzz-run valgrind \
+	check-data outputs $(ISPD2005_OUTPUT_TARGETS) \
 	$(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2005FREE_OUTPUT_TARGETS) \
 	$(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS) $(ISPD2015_OUTPUT_TARGETS) \
 	$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS) \
@@ -102,6 +115,10 @@ $(TEST_BIN): $(PARSING_OBJECTS) $(RENDERING_OBJECTS) \
 		$(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(TEST_OBJECTS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+$(BENCH_BIN): $(PARSING_OBJECTS) $(RENDERING_OBJECTS) \
+		$(SERIALIZATION_OBJECTS) $(MODEL_OBJECTS) $(BENCH_OBJECTS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 $(OBJ_DIR)/%.o: src/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
@@ -110,11 +127,33 @@ $(OBJ_DIR)/test/%.o: test/%.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
+$(OBJ_DIR)/bench/%.o: bench/%.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
+
 $(BIN_DIR):
 	mkdir -p $@
 
 test: $(TEST_BIN)
 	$(TEST_BIN)
+
+benchmark: $(BENCH_BIN)
+
+benchmark-run: $(BENCH_BIN)
+	BENCH_RUNS="$(BENCH_RUNS)" \
+		BENCH_DIR="$(BENCH_DIR)" \
+		BENCH_BOOKSHELF_DESIGN="$(BENCH_BOOKSHELF_DESIGN)" \
+		BENCH_LEFDEF_DESIGN="$(BENCH_LEFDEF_DESIGN)" \
+		BENCH_CXX="$(CXX)" BENCH_CXXFLAGS="$(CXXFLAGS)" \
+		./bench/run.sh "$(BENCH_BIN)"
+
+benchmark-run-quick: $(BENCH_BIN)
+	BENCH_RUNS="$(BENCH_QUICK_RUNS)" \
+		BENCH_DIR="$(BENCH_QUICK_DIR)" \
+		BENCH_BOOKSHELF_DESIGN="$(BENCH_QUICK_BOOKSHELF_DESIGN)" \
+		BENCH_LEFDEF_DESIGN="$(BENCH_QUICK_LEFDEF_DESIGN)" \
+		BENCH_CXX="$(CXX)" BENCH_CXXFLAGS="$(CXXFLAGS)" \
+		./bench/run.sh "$(BENCH_BIN)"
 
 $(FUZZ_OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)
@@ -282,4 +321,5 @@ clean-outputs:
 
 -include $(PARSING_OBJECTS:.o=.d) $(RENDERING_OBJECTS:.o=.d) \
 	$(SERIALIZATION_OBJECTS:.o=.d) $(MODEL_OBJECTS:.o=.d) $(PARSE_OBJECT:.o=.d) \
-	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECTS:.o=.d) $(FUZZ_OBJECTS:.o=.d)
+	$(RENDER_OBJECT:.o=.d) $(TEST_OBJECTS:.o=.d) $(BENCH_OBJECTS:.o=.d) \
+	$(FUZZ_OBJECTS:.o=.d)
