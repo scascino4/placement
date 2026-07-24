@@ -160,7 +160,8 @@ struct Board {
   std::vector<Net> nets;
   std::vector<Pin> pins;
 
-  [[nodiscard]] UtilizationGrid utilization(double bin_size) const;
+  // Callers interested only in legal capacity can skip movable overlap.
+  [[nodiscard]] UtilizationGrid utilization(double bin_size, bool include_movable = true) const;
   [[nodiscard]] PinDensityGrid pin_density(double bin_size) const;
   // Includes all placed movable objects. Fixed physical objects reduce
   // available capacity; non-interacting objects are excluded.

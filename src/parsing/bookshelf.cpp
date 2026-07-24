@@ -312,14 +312,33 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
   Record record;
   std::optional<std::size_t> cell_weight_size;
   std::optional<std::size_t> net_weight_size;
-  std::unordered_set<std::string> seen;
   std::optional<NetIndex> net_idx;
 
   while (records.next(record)) {
     const auto &fields = record.fields();
     if (fields.size() < 2)
       records.fail("weight record requires at least one value");
-    if (!seen.emplace(fields[0]).second)
+
+    std::vector<double> *target;
+    std::optional<std::size_t> *expected_size;
+    std::string_view kind;
+    if (const auto cell = cell_idx.find(fields[0])) {
+      target = &board.cells[*cell].weights;
+      expected_size = &cell_weight_size;
+      kind = "node";
+    } else {
+      // Most benchmark weight files contain only the header. Defer the
+      // multi-million-net lookup table until a record actually needs it.
+      if (!net_idx)
+        net_idx.emplace(board.nets, path);
+      const auto net = net_idx->find(fields[0]);
+      if (!net)
+        records.fail("weight references unknown cell or net '" + std::string(fields[0]) + "'");
+      target = &board.nets[*net].weights;
+      expected_size = &net_weight_size;
+      kind = "net";
+    }
+    if (!target->empty())
       records.fail("duplicate weight record for '" + std::string(fields[0]) + "'");
 
     std::vector<double> values;
@@ -330,24 +349,10 @@ void parse_weights(const std::filesystem::path &path, Board &board, const CellIn
     // Bookshelf permits different vector dimensions for cells and nets, but
     // records of the same kind must agree so downstream consumers see a
     // consistent feature vector.
-    if (const auto cell = cell_idx.find(fields[0])) {
-      if (cell_weight_size && *cell_weight_size != values.size())
-        records.fail("inconsistent node weight dimension");
-      cell_weight_size = values.size();
-      board.cells[*cell].weights = std::move(values);
-    } else {
-      // Most benchmark weight files contain only the header. Defer the
-      // multi-million-net lookup table until a record actually needs it.
-      if (!net_idx)
-        net_idx.emplace(board.nets, path);
-      const auto net = net_idx->find(fields[0]);
-      if (!net)
-        records.fail("weight references unknown cell or net '" + std::string(fields[0]) + "'");
-      if (net_weight_size && *net_weight_size != values.size())
-        records.fail("inconsistent net weight dimension");
-      net_weight_size = values.size();
-      board.nets[*net].weights = std::move(values);
-    }
+    if (*expected_size && **expected_size != values.size())
+      records.fail("inconsistent " + std::string(kind) + " weight dimension");
+    *expected_size = values.size();
+    *target = std::move(values);
   }
 }
 

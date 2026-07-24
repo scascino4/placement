@@ -16,8 +16,6 @@
 
 namespace {
 
-enum class InputFormat { Bookshelf, LefDef };
-
 void usage(std::ostream &out) {
   out << "Usage: placement_parse [--input-format bookshelf|lefdef] [--lef-file path]... [--placement-file path] "
          "[--serialization-format binary] <input> <output>\n";
@@ -65,27 +63,17 @@ int main(int argc, char **argv) {
     // Normalize and select the input backend at the only decision point.
     const auto norm = placement::detail::lower(in_fmt);
 
-    InputFormat fmt;
-    if (norm == "bookshelf")
-      fmt = InputFormat::Bookshelf;
-    else if (norm == "lefdef" || norm == "lef/def")
-      fmt = InputFormat::LefDef;
-    else
-      throw placement::Error("unsupported input format '" + in_fmt + "'");
-
     std::unique_ptr<placement::Parser> parser;
-    switch (fmt) {
-    case InputFormat::Bookshelf:
+    if (norm == "bookshelf") {
       if (!lefs.empty())
         throw placement::Error("--lef-file is only valid with --input-format lefdef");
       parser = placement::make_parser(placement::BookshelfParseOptions{.placement_override = pl_override});
-      break;
-
-    case InputFormat::LefDef:
+    } else if (norm == "lefdef" || norm == "lef/def") {
       if (pl_override)
         throw placement::Error("--placement-file is only valid with --input-format bookshelf");
       parser = placement::make_parser(placement::LefDefParseOptions{.lef_files = std::move(lefs)});
-      break;
+    } else {
+      throw placement::Error("unsupported input format '" + in_fmt + "'");
     }
 
     auto serializer = placement::make_serializer(ser_fmt);

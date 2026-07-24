@@ -152,43 +152,53 @@ template <> struct NameTraits<Net> {
   static constexpr std::string_view kind = "net";
 };
 
+inline constexpr std::uint32_t EMPTY_NAME_SLOT = std::numeric_limits<std::uint32_t>::max();
+
+template <typename Record, typename Duplicate>
+[[nodiscard]] std::vector<std::uint32_t> make_name_slots(const std::vector<Record> &records, Duplicate duplicate) {
+  const auto required = records.size() + records.size() / 2 + 1;
+  std::vector<std::uint32_t> slots(std::bit_ceil(required), EMPTY_NAME_SLOT);
+  for (std::uint32_t i = 0; i < records.size(); ++i) {
+    auto slot = std::hash<std::string_view>{}(records[i].name) & (slots.size() - 1);
+    while (slots[slot] != EMPTY_NAME_SLOT) {
+      if (records[slots[slot]].name == records[i].name)
+        duplicate(records[i].name);
+      slot = (slot + 1) & (slots.size() - 1);
+    }
+    slots[slot] = i;
+  }
+  return slots;
+}
+
+template <typename Record>
+[[nodiscard]] std::optional<std::uint32_t> find_name(const std::vector<Record> &records, const std::vector<std::uint32_t> &slots,
+                                                     std::string_view name) {
+  auto slot = std::hash<std::string_view>{}(name) & (slots.size() - 1);
+  while (slots[slot] != EMPTY_NAME_SLOT) {
+    const auto idx = slots[slot];
+    if (records[idx].name == name)
+      return idx;
+    slot = (slot + 1) & (slots.size() - 1);
+  }
+  return std::nullopt;
+}
+
 template <typename Record> class NameIndex {
 public:
   NameIndex(const std::vector<Record> &records, const std::filesystem::path &path) : records_(records) {
-    if (records.size() >= EMPTY)
+    if (records.size() >= EMPTY_NAME_SLOT)
       throw Error(path.string() + ": " + std::string(NameTraits<Record>::kind) + " count exceeds placement model limit");
 
     // Open addressing stores one compact integer per slot and avoids one heap
     // allocation per name on multi-million-record designs.
-    const auto required = records.size() + records.size() / 2 + 1;
-    slots_.assign(std::bit_ceil(required), EMPTY);
-    for (std::uint32_t i = 0; i < records.size(); ++i) {
-      auto slot = initial_slot(records[i].name);
-      while (slots_[slot] != EMPTY) {
-        if (records_[slots_[slot]].name == records[i].name)
-          throw Error(path.string() + ": duplicate " + std::string(NameTraits<Record>::kind) + " name '" + records[i].name + "'");
-        slot = (slot + 1) & (slots_.size() - 1);
-      }
-      slots_[slot] = i;
-    }
+    slots_ = make_name_slots(records, [&](std::string_view name) {
+      throw Error(path.string() + ": duplicate " + std::string(NameTraits<Record>::kind) + " name '" + std::string(name) + "'");
+    });
   }
 
-  [[nodiscard]] std::optional<std::uint32_t> find(std::string_view name) const {
-    auto slot = initial_slot(name);
-    while (slots_[slot] != EMPTY) {
-      const auto idx = slots_[slot];
-      if (records_[idx].name == name)
-        return idx;
-      slot = (slot + 1) & (slots_.size() - 1);
-    }
-    return std::nullopt;
-  }
+  [[nodiscard]] std::optional<std::uint32_t> find(std::string_view name) const { return find_name(records_, slots_, name); }
 
 private:
-  static constexpr std::uint32_t EMPTY = std::numeric_limits<std::uint32_t>::max();
-
-  [[nodiscard]] std::size_t initial_slot(std::string_view name) const { return std::hash<std::string_view>{}(name) & (slots_.size() - 1); }
-
   const std::vector<Record> &records_;
   std::vector<std::uint32_t> slots_;
 };

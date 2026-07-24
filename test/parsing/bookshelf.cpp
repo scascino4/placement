@@ -113,6 +113,10 @@ void bookshelf_record_validation_test() {
   bookshelf_fixture(tmp.path());
   write(tmp.path() / "tiny.wts", "UCLA wts 1.0\nmissing 1\n");
   expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "weight references unknown cell or net 'missing'");
+
+  bookshelf_fixture(tmp.path());
+  write(tmp.path() / "tiny.wts", "UCLA wts 1.0\na 1\na 2\n");
+  expect_error([&] { (void)parse_bookshelf_fixture(tmp.path()); }, "duplicate weight record for 'a'");
 }
 
 void bookshelf_row_and_placement_validation_test() {

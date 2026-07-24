@@ -7,11 +7,9 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -23,6 +21,8 @@
 namespace placement {
 namespace {
 
+using parsing_detail::find_name;
+using parsing_detail::make_name_slots;
 using parsing_detail::NameIndex;
 using parsing_detail::number;
 using parsing_detail::orientation;
@@ -298,61 +298,10 @@ struct MacroDefinition {
   std::vector<std::uint32_t> pin_slots;
 
   [[nodiscard]] const MacroPinDefinition *find_pin(std::string_view pin_name) const {
-    const auto empty = std::numeric_limits<std::uint32_t>::max();
-    auto slot = std::hash<std::string_view>{}(pin_name) & (pin_slots.size() - 1);
-    while (pin_slots[slot] != empty) {
-      const auto idx = pin_slots[slot];
-      if (pins[idx].name == pin_name)
-        return &pins[idx];
-      slot = (slot + 1) & (pin_slots.size() - 1);
-    }
-    return nullptr;
+    const auto idx = find_name(pins, pin_slots, pin_name);
+    return idx ? &pins[*idx] : nullptr;
   }
 };
-
-template <typename Definition> struct DefinitionTraits;
-
-template <> struct DefinitionTraits<SiteDefinition> {
-  static constexpr std::string_view kind = "site";
-};
-
-template <> struct DefinitionTraits<MacroDefinition> {
-  static constexpr std::string_view kind = "macro";
-};
-
-template <typename Definition> void finalize_definitions(std::vector<Definition> &defs) {
-  std::sort(defs.begin(), defs.end(), [](const Definition &lhs, const Definition &rhs) { return lhs.name < rhs.name; });
-  for (std::size_t i = 1; i < defs.size(); ++i)
-    if (defs[i - 1].name == defs[i].name)
-      throw Error("LEF inputs contain duplicate " + std::string(DefinitionTraits<Definition>::kind) + " name '" + defs[i].name + "'");
-}
-
-template <typename Definition> [[nodiscard]] std::vector<std::uint32_t> make_definition_index(const std::vector<Definition> &defs) {
-  constexpr auto empty = std::numeric_limits<std::uint32_t>::max();
-  const auto required = defs.size() + defs.size() / 2 + 1;
-  std::vector<std::uint32_t> slots(std::bit_ceil(required), empty);
-  for (std::uint32_t i = 0; i < defs.size(); ++i) {
-    auto slot = std::hash<std::string_view>{}(defs[i].name) & (slots.size() - 1);
-    while (slots[slot] != empty)
-      slot = (slot + 1) & (slots.size() - 1);
-    slots[slot] = i;
-  }
-  return slots;
-}
-
-template <typename Definition>
-[[nodiscard]] std::optional<std::uint32_t> find_definition(const std::vector<Definition> &defs, const std::vector<std::uint32_t> &slots,
-                                                           std::string_view name) {
-  constexpr auto empty = std::numeric_limits<std::uint32_t>::max();
-  auto slot = std::hash<std::string_view>{}(name) & (slots.size() - 1);
-  while (slots[slot] != empty) {
-    const auto idx = slots[slot];
-    if (defs[idx].name == name)
-      return idx;
-    slot = (slot + 1) & (slots.size() - 1);
-  }
-  return std::nullopt;
-}
 
 class Library {
 public:
@@ -367,16 +316,16 @@ public:
     if (sites_.size() >= std::numeric_limits<std::uint32_t>::max() || macros_.size() >= std::numeric_limits<std::uint32_t>::max())
       throw Error("LEF definition count exceeds placement model limit");
 
-    // Sort once for deterministic duplicate checks, then use compact open
-    // addressing for the millions of DEF references into these definitions.
-    finalize_definitions(sites_);
-    finalize_definitions(macros_);
-    site_slots_ = make_definition_index(sites_);
-    macro_slots_ = make_definition_index(macros_);
+    // Compact open addressing validates names once and supports the millions
+    // of DEF references into these definitions without per-name allocation.
+    site_slots_ =
+        make_name_slots(sites_, [](std::string_view name) { throw Error("LEF inputs contain duplicate site name '" + std::string(name) + "'"); });
+    macro_slots_ =
+        make_name_slots(macros_, [](std::string_view name) { throw Error("LEF inputs contain duplicate macro name '" + std::string(name) + "'"); });
   }
 
-  [[nodiscard]] std::optional<std::uint32_t> find_site(std::string_view name) const { return find_definition(sites_, site_slots_, name); }
-  [[nodiscard]] std::optional<std::uint32_t> find_macro(std::string_view name) const { return find_definition(macros_, macro_slots_, name); }
+  [[nodiscard]] std::optional<std::uint32_t> find_site(std::string_view name) const { return find_name(sites_, site_slots_, name); }
+  [[nodiscard]] std::optional<std::uint32_t> find_macro(std::string_view name) const { return find_name(macros_, macro_slots_, name); }
   [[nodiscard]] std::size_t macro_count() const { return macros_.size(); }
   [[nodiscard]] const SiteDefinition &site(std::uint32_t idx) const { return sites_[idx]; }
   [[nodiscard]] const MacroDefinition &macro(std::uint32_t idx) const { return macros_[idx]; }
@@ -502,14 +451,10 @@ void parse_lef_port(Tokens &tokens, Bounds &bounds) {
         tokens.fail("macro '" + macro.name + "' requires positive dimensions");
       if (origin_x != 0 || origin_y != 0)
         tokens.fail("macro '" + macro.name + "' has an unsupported nonzero origin");
-      std::sort(macro.pins.begin(), macro.pins.end(),
-                [](const MacroPinDefinition &lhs, const MacroPinDefinition &rhs) { return lhs.name < rhs.name; });
-      for (std::size_t i = 1; i < macro.pins.size(); ++i)
-        if (macro.pins[i - 1].name == macro.pins[i].name)
-          tokens.fail("duplicate macro pin name '" + macro.pins[i].name + "'");
       if (macro.pins.size() >= std::numeric_limits<std::uint32_t>::max())
         tokens.fail("macro pin count exceeds placement model limit");
-      macro.pin_slots = make_definition_index(macro.pins);
+      macro.pin_slots =
+          make_name_slots(macro.pins, [&](std::string_view name) { tokens.fail("duplicate macro pin name '" + std::string(name) + "'"); });
       return macro;
     }
 
@@ -673,15 +618,13 @@ public:
 private:
   static constexpr std::uint32_t NO_MACRO = std::numeric_limits<std::uint32_t>::max();
 
-  [[nodiscard]] double scale(double value) const {
+  [[nodiscard]] double next_scaled(std::string_view description) {
     if (!units_seen_)
       tokens_.fail("UNITS must precede geometric records");
     // DEF coordinates are integral database units; Board geometry is always
     // normalized to microns to match LEF dimensions.
-    return value / static_cast<double>(db_units_);
+    return next_number<double>(tokens_, description) / static_cast<double>(db_units_);
   }
-
-  [[nodiscard]] double next_scaled(std::string_view description) { return scale(next_number<double>(tokens_, description)); }
 
   void parse_units() {
     if (units_seen_)

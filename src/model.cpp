@@ -58,13 +58,9 @@ PlacedRectangle subrow_rectangle(const Row &row, const Subrow &subrow) {
 
 namespace {
 
-void validate(const PlacedRectangle &rect);
-
 [[nodiscard]] bool movable(const Cell &cell) {
   return cell.kind == CellKind::Movable && cell.location && cell.location->status == PlacementStatus::Movable;
 }
-
-[[nodiscard]] bool fixed(const Cell &cell) { return cell.location && !movable(cell); }
 
 enum class Area { Movable, Placeable };
 
@@ -74,22 +70,7 @@ void validate(const PlacedRectangle &rect) {
     throw Error("cannot calculate placement density for non-finite or negative geometry");
 }
 
-template <typename Grid> struct GridTraits;
-
-template <> struct GridTraits<UtilizationGrid> {
-  static constexpr std::string_view kind = "utilization";
-};
-
-template <> struct GridTraits<PinDensityGrid> {
-  static constexpr std::string_view kind = "pin density";
-};
-
-template <> struct GridTraits<CellDensityGrid> {
-  static constexpr std::string_view kind = "cell density";
-};
-
-template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size) {
-  constexpr auto kind = GridTraits<Grid>::kind;
+template <typename Grid> [[nodiscard]] Grid make_grid(const std::vector<Row> &rows, double bin_size, std::string_view kind) {
   if (!std::isfinite(bin_size) || bin_size <= 0)
     throw Error(std::string(kind) + " bin size must be finite and positive");
 
@@ -206,8 +187,8 @@ std::optional<double> CellDensityBin::density() const {
   return movable_area / available_area;
 }
 
-UtilizationGrid Board::utilization(double bin_size) const {
-  auto grid = make_grid<UtilizationGrid>(rows, bin_size);
+UtilizationGrid Board::utilization(double bin_size, bool include_movable) const {
+  auto grid = make_grid<UtilizationGrid>(rows, bin_size, "utilization");
 
   // Row subrows define initial legal capacity. Fixed objects remove only the
   // portions of that capacity they cover; space outside rows was never legal.
@@ -252,11 +233,12 @@ UtilizationGrid Board::utilization(double bin_size) const {
     if (!cell.location)
       continue;
 
-    const auto rect = placed_rectangle(cell);
-    if (movable(cell))
-      add_overlap(grid, rect, Area::Movable);
-    else if (fixed(cell))
-      subtract_row_overlap(rect);
+    if (movable(cell)) {
+      if (include_movable)
+        add_overlap(grid, placed_rectangle(cell), Area::Movable);
+    } else {
+      subtract_row_overlap(placed_rectangle(cell));
+    }
   }
 
   for (auto &bin : grid.bins)
@@ -266,7 +248,7 @@ UtilizationGrid Board::utilization(double bin_size) const {
 }
 
 PinDensityGrid Board::pin_density(double bin_size) const {
-  auto grid = make_grid<PinDensityGrid>(rows, bin_size);
+  auto grid = make_grid<PinDensityGrid>(rows, bin_size, "pin density");
   for_each_bin(grid, [](PinDensityBin &bin, double area) { bin.area = area; });
 
   for (const auto &pin : pins) {
@@ -299,7 +281,7 @@ PinDensityGrid Board::pin_density(double bin_size) const {
 }
 
 CellDensityGrid Board::cell_density(double bin_size) const {
-  auto grid = make_grid<CellDensityGrid>(rows, bin_size);
+  auto grid = make_grid<CellDensityGrid>(rows, bin_size, "cell density");
   // Cell density intentionally uses geometric bin area as capacity, unlike
   // utilization(), whose denominator is legal row area.
   for_each_bin(grid, [](CellDensityBin &bin, double area) { bin.available_area = area; });

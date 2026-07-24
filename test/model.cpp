@@ -90,6 +90,10 @@ void utilization_test() {
   check(close(grid.at(0, 0).placeable_area, 100) && close(grid.at(1, 0).placeable_area, 100), "movable macros do not reduce placeable area");
   check(close(*grid.at(0, 0).utilization(), 0.45) && close(*grid.at(1, 0).utilization(), 0.25), "utilization ratios");
 
+  const auto placeable_grid = board.utilization(10, false);
+  check(close(placeable_grid.at(0, 0).movable_area, 0) && close(placeable_grid.at(1, 0).movable_area, 0),
+        "placeability-only grids skip movable overlap");
+
   Board fragmented;
   auto fragmented_row = row(0, 10);
   fragmented_row.subrows = {{0, 4}, {6, 4}};

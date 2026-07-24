@@ -212,30 +212,27 @@ $(ISPD2005_OUTPUT_TARGETS) $(ISPD2005_DREAMPLACE_OUTPUT_TARGETS) \
 	$(ISPD2015_OUTPUT_TARGETS) \
 	$(ISPD2015_DREAMPLACE_OUTPUT_TARGETS): | check-data
 
+define RENDER_VIEWS
+	$(RENDER_BIN) "$(1)/placement.placebin" "$(1)/placement.svg"
+	$(RENDER_BIN) --output-format utilization-svg "$(1)/placement.placebin" \
+		"$(1)/utilization.svg"
+	$(RENDER_BIN) --output-format pin-density-svg "$(1)/placement.placebin" \
+		"$(1)/pin-density.svg"
+	$(RENDER_BIN) --output-format cell-density-svg "$(1)/placement.placebin" \
+		"$(1)/cell-density.svg"
+endef
+
 $(ISPD2005_OUTPUT_TARGETS): ispd2005-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005/$*"
 	$(PARSE_BIN) "data/ispd2005/$*/$*.dp.aux" "out/ispd2005/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2005/$*/placement.placebin" "out/ispd2005/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005/$*/placement.placebin" \
-		"out/ispd2005/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005/$*/placement.placebin" \
-		"out/ispd2005/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005/$*/placement.placebin" \
-		"out/ispd2005/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2005/$*)
 
 $(ISPD2005_DREAMPLACE_OUTPUT_TARGETS): ispd2005-dreamplace-output-%: \
 		$(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2005-dreamplace/$*"
 	$(PARSE_BIN) --placement-file "data/ispd2005-dreamplace/$*.gp.pl" \
 		"data/ispd2005/$*/$*.dp.aux" "out/ispd2005-dreamplace/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2005-dreamplace/$*/placement.placebin" \
-		"out/ispd2005-dreamplace/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
-		"out/ispd2005-dreamplace/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
-		"out/ispd2005-dreamplace/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005-dreamplace/$*/placement.placebin" \
-		"out/ispd2005-dreamplace/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2005-dreamplace/$*)
 
 $(ISPD2005FREE_OUTPUT_TARGETS): ispd2005free-output-%: \
 		$(PARSE_BIN) $(RENDER_BIN)
@@ -243,14 +240,7 @@ $(ISPD2005FREE_OUTPUT_TARGETS): ispd2005free-output-%: \
 	$(PARSE_BIN) --placement-file "data/ispd2005free/$*/$*_allfree.pl" \
 		"data/ispd2005free/$*/$*.aux" \
 		"out/ispd2005free/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2005free/$*/placement.placebin" \
-		"out/ispd2005free/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg "out/ispd2005free/$*/placement.placebin" \
-		"out/ispd2005free/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg "out/ispd2005free/$*/placement.placebin" \
-		"out/ispd2005free/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg "out/ispd2005free/$*/placement.placebin" \
-		"out/ispd2005free/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2005free/$*)
 
 $(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS): ispd2005free-dreamplace-output-%: \
 		$(PARSE_BIN) $(RENDER_BIN)
@@ -258,17 +248,7 @@ $(ISPD2005FREE_DREAMPLACE_OUTPUT_TARGETS): ispd2005free-dreamplace-output-%: \
 	$(PARSE_BIN) --placement-file "data/ispd2005free-dreamplace/$*_allfree.gp.pl" \
 		"data/ispd2005free/$*/$*.aux" \
 		"out/ispd2005free-dreamplace/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2005free-dreamplace/$*/placement.placebin" \
-		"out/ispd2005free-dreamplace/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg \
-		"out/ispd2005free-dreamplace/$*/placement.placebin" \
-		"out/ispd2005free-dreamplace/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg \
-		"out/ispd2005free-dreamplace/$*/placement.placebin" \
-		"out/ispd2005free-dreamplace/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg \
-		"out/ispd2005free-dreamplace/$*/placement.placebin" \
-		"out/ispd2005free-dreamplace/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2005free-dreamplace/$*)
 
 $(ISPD2015_OUTPUT_TARGETS): ispd2015-output-%: $(PARSE_BIN) $(RENDER_BIN)
 	@mkdir -p "out/ispd2015/$*"
@@ -277,17 +257,7 @@ $(ISPD2015_OUTPUT_TARGETS): ispd2015-output-%: $(PARSE_BIN) $(RENDER_BIN)
 		--lef-file "data/ispd2015/$*/cells.lef" \
 		"data/ispd2015/$*/after_legalized.ntup.fix.def" \
 		"out/ispd2015/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2015/$*/placement.placebin" \
-		"out/ispd2015/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg \
-		"out/ispd2015/$*/placement.placebin" \
-		"out/ispd2015/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg \
-		"out/ispd2015/$*/placement.placebin" \
-		"out/ispd2015/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg \
-		"out/ispd2015/$*/placement.placebin" \
-		"out/ispd2015/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2015/$*)
 
 $(ISPD2015_DREAMPLACE_OUTPUT_TARGETS): ispd2015-dreamplace-output-%: \
 		$(PARSE_BIN) $(RENDER_BIN)
@@ -297,17 +267,7 @@ $(ISPD2015_DREAMPLACE_OUTPUT_TARGETS): ispd2015-dreamplace-output-%: \
 		--lef-file "data/ispd2015/$*/cells.lef" \
 		"data/ispd2015-dreamplace/$*.gp.def" \
 		"out/ispd2015-dreamplace/$*/placement.placebin"
-	$(RENDER_BIN) "out/ispd2015-dreamplace/$*/placement.placebin" \
-		"out/ispd2015-dreamplace/$*/placement.svg"
-	$(RENDER_BIN) --output-format utilization-svg \
-		"out/ispd2015-dreamplace/$*/placement.placebin" \
-		"out/ispd2015-dreamplace/$*/utilization.svg"
-	$(RENDER_BIN) --output-format pin-density-svg \
-		"out/ispd2015-dreamplace/$*/placement.placebin" \
-		"out/ispd2015-dreamplace/$*/pin-density.svg"
-	$(RENDER_BIN) --output-format cell-density-svg \
-		"out/ispd2015-dreamplace/$*/placement.placebin" \
-		"out/ispd2015-dreamplace/$*/cell-density.svg"
+	$(call RENDER_VIEWS,out/ispd2015-dreamplace/$*)
 
 format:
 	@command -v $(CLANG_FORMAT) >/dev/null || { \
